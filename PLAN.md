@@ -54,7 +54,7 @@ Revision 3 applies the answers to X2–X5, fixes F1–F4 and S1–S2 on top of r
 
 ## 2. Database schema
 
-Plain SQL. Postgres 17 (needed for `UNIQUE NULLS NOT DISTINCT`). Every derived row references `episodes` with `ON DELETE CASCADE`.
+Plain SQL. Postgres 17 in Docker (`UNIQUE NULLS NOT DISTINCT` needs 15+). Every derived row references `episodes` with `ON DELETE CASCADE`.
 
 Key design points in this revision:
 - **`body` is source text only** (P2). Nothing generated is written into it. All character spans are offsets into `body`. Structural facts point at a field (`field_ref`) instead of an offset.
