@@ -333,17 +333,20 @@ Note: Gmail empties Trash after 30 days, so the default window matches Gmail's o
 Each step ends with a **STOP**: I show you the result, commit, and wait.
 
 ### Step 1: Skeleton
+
+Status: code done and verified against a local Postgres 16 + pgvector (30 tests pass). **Blocked on Docker**: Docker isn't installed on this machine yet, so the unticked items can't be verified.
+
 | | Item | |
 |---|---|---|
-| - [ ] | `git init`, `.gitignore`, `.env.example` | **essential** |
+| - [x] | `git init`, `.gitignore`, `.env.example` | **essential** |
 | - [ ] | `pyproject.toml`, `Dockerfile`, `docker-compose.yml` (pgvector on Postgres 17, named volume, healthcheck) | **essential** |
 | - [ ] | `./pkos` wrapper, so the single sync command is `./pkos sync`; warns on every run if FileVault is off (S2) | **essential** |
-| - [ ] | Migration runner (checksums, refuses edited migrations) and `0001_base.sql`; runs on container start | **essential** |
-| - [ ] | Runner idempotency tests: migrate twice is a no-op, an edited applied migration is refused, a failed migration rolls back | **essential** |
-| - [ ] | `pkos health`: DB reachable, extensions present, migrations current | **essential** |
+| - [x] | Migration runner (checksums, refuses edited migrations) and `0001_base.sql`; runs on container start | **essential** |
+| - [x] | Runner idempotency tests: migrate twice is a no-op, an edited applied migration is refused, a failed migration rolls back | **essential** |
+| - [x] | `pkos health`: DB reachable, extensions present, migrations current | **essential** |
 | - [ ] | `./pkos test`: pytest in the container against a separate `pkos_test` DB | **essential** |
-| - [ ] | Secret-scrubbing log filter, plus a test that a planted fake key never reaches log output or exception text | **essential** |
-| - [ ] | CLAUDE.md first version | **essential** |
+| - [x] | Secret-scrubbing log filter, plus a test that a planted fake key never reaches log output or exception text | **essential** |
+| - [x] | CLAUDE.md first version | **essential** |
 | — | `runs`, `model_calls`, usage reporting | deferred → step 5 |
 | — | Provider reachability in `health` (hosted, Ollama) | deferred → step 4 |
 | — | HTML dump viewer | deferred → step 8 |
