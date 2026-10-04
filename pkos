@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Host-side wrapper: runs pkos commands inside the app container.
+#   ./pkos health | migrate | sync ...   -> pkos <args> in the container
+#   ./pkos test [pytest args]            -> pytest in the container
+set -euo pipefail
+cd "$(dirname "$0")"
+
+# S2: phase one relies on OS full-disk encryption for data at rest.
+if [[ "$(uname)" == "Darwin" ]] && command -v fdesetup >/dev/null 2>&1; then
+  if ! fdesetup status 2>/dev/null | grep -q "FileVault is On"; then
+    echo "WARNING: FileVault is off. Your archive is stored unencrypted on disk. See README, 'Encryption at rest'." >&2
+  fi
+fi
+
+# macOS ships bash 3.2, where an empty array trips `set -u`, so this is a plain string.
+tty_flag=""
+[[ -t 0 && -t 1 ]] || tty_flag="-T"
+
+case "${1:-}" in
+  test)
+    shift
+    exec docker compose run --rm $tty_flag app pytest "$@"
+    ;;
+  *)
+    exec docker compose run --rm $tty_flag app pkos "$@"
+    ;;
+esac

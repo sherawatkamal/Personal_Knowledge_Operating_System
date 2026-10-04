@@ -1,0 +1,46 @@
+name: pkos
+
+x-app: &app
+  build: .
+  image: pkos-app
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    PKOS_DB_HOST: db
+  volumes:
+    - ./:/app   # dev bind mount: code edits apply without a rebuild
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: pkos
+      POSTGRES_USER: pkos
+      POSTGRES_PASSWORD: ${PKOS_DB_PASSWORD:-pkos-local-dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No published port: the database is reachable only from the Docker network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pkos -d pkos"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["pkos", "migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    command: ["pkos", "health"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
