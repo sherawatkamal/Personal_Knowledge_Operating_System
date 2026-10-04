@@ -1,6 +1,6 @@
 # Phase One Implementation Plan
 
-Status: **revision 3, approved**. Step 1 in progress.
+Status: **revision 3, approved**. Step 1 done; step 2 next.
 
 Phase one: connect Granola, Gmail, Google Calendar and (last) Slack; store episodes with provenance; extract facts and commitments; run simple hybrid retrieval with citations; and measure everything with an eval harness that compares configurations. It must be usable on its own.
 
@@ -334,24 +334,24 @@ Each step ends with a **STOP**: I show you the result, commit, and wait.
 
 ### Step 1: Skeleton
 
-Status: code done and verified against a local Postgres 16 + pgvector (30 tests pass). **Blocked on Docker**: Docker isn't installed on this machine yet, so the unticked items can't be verified.
+Status: **done 2026-10-04.** Verified from a clean Docker state (0 images, 0 volumes) and from a cold GitHub clone with `.env.example` copied: `docker compose up` reaches healthy in about 35 s, `./pkos health` is all ok, and `./pkos test` passes 30/30 in the container. Pinned images (all native linux/arm64): `python:3.12.15-slim-trixie`, `ghcr.io/astral-sh/uv:0.12.23`, `pgvector/pgvector:0.8.7-pg17` (Postgres 17.11, pgvector 0.8.7).
 
 | | Item | |
 |---|---|---|
 | - [x] | `git init`, `.gitignore`, `.env.example` | **essential** |
-| - [ ] | `pyproject.toml`, `Dockerfile`, `docker-compose.yml` (pgvector on Postgres 17, named volume, healthcheck) | **essential** |
-| - [ ] | `./pkos` wrapper, so the single sync command is `./pkos sync`; warns if FileVault is off, on `health` and first run only (S2) | **essential** |
+| - [x] | `pyproject.toml`, `Dockerfile`, `docker-compose.yml` (pinned pgvector 0.8.7 on Postgres 17.11, named volume, healthcheck) | **essential** |
+| - [x] | `./pkos` wrapper, so the single sync command is `./pkos sync`; warns if FileVault is off, on `health` and first run only (S2) | **essential** |
 | - [x] | Migration runner (checksums, refuses edited migrations) and `0001_base.sql`; runs on container start | **essential** |
 | - [x] | Runner idempotency tests: migrate twice is a no-op, an edited applied migration is refused, a failed migration rolls back | **essential** |
 | - [x] | `pkos health`: DB reachable, extensions present, migrations current | **essential** |
-| - [ ] | `./pkos test`: pytest in the container against a separate `pkos_test` DB | **essential** |
+| - [x] | `./pkos test`: pytest in the container with a fresh `pkos_test_*` database per test | **essential** |
 | - [x] | Secret-scrubbing log filter, plus a test that a planted fake key never reaches log output or exception text | **essential** |
 | - [x] | CLAUDE.md first version | **essential** |
 | — | `runs`, `model_calls`, usage reporting | deferred → step 5 |
 | — | Provider reachability in `health` (hosted, Ollama) | deferred → step 4 |
 | — | HTML dump viewer | deferred → step 8 |
 | — | Episode upsert idempotency tests | deferred → step 2 (see X5) |
-| - [ ] | **STOP** → commit | |
+| - [x] | **STOP** → commit | |
 
 ### Step 2: Episodes and Granola
 - [ ] `0002_episodes.sql` (final shape above, with P2 applied before any data exists)
