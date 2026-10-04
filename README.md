@@ -17,7 +17,11 @@ This is a decision, not an omission:
 
 So encryption at rest is phase two.
 
-The `./pkos` wrapper checks FileVault on `./pkos health` and on its first run, and warns if it's off. The `data/` directory (OAuth tokens, eval results, extraction dumps) is plaintext on disk under the same protection.
+The `./pkos` wrapper checks FileVault on `./pkos health` and on its first run, and warns if it's off.
+
+**Gap:** the check runs on the host, because a container can't see the host's disk encryption. A plain `docker compose up` never runs it and never warns. If you mostly start the stack that way, check FileVault yourself once (`fdesetup status`, or System Settings → Privacy & Security → FileVault), or run `./pkos health` occasionally.
+
+The `data/` directory (OAuth tokens, eval results, extraction dumps) is plaintext on disk under the same protection.
 
 ## Install
 
