@@ -1,6 +1,6 @@
 # Phase One Implementation Plan
 
-Status: **revision 3, approved**. Step 1 done; step 2 next.
+Status: **revision 3, approved**. Steps 1–2 done; step 2 STOP open (G1–G3).
 
 Phase one: connect Granola, Gmail, Google Calendar and (last) Slack; store episodes with provenance; extract facts and commitments; run simple hybrid retrieval with citations; and measure everything with an eval harness that compares configurations. It must be usable on its own.
 
@@ -78,7 +78,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- 0002_episodes.sql  (step 2)
 CREATE TABLE sync_state (
     source           text PRIMARY KEY,               -- 'granola' | 'gmail' | 'gcal' | 'slack'
-    watermark        jsonb NOT NULL DEFAULT '{}'::jsonb,  -- gmail {"history_id"}, gcal {"sync_token"}, granola {"updated_after","cursor"}, slack {"<channel>": "<ts>"}
+    watermark        jsonb NOT NULL DEFAULT '{}'::jsonb,  -- gmail {"history_id"}, gcal {"sync_token"}, granola {"max_updated_at"}, slack {"<channel>": "<ts>"}
     last_success_at  timestamptz,
     updated_at       timestamptz NOT NULL DEFAULT now()
 );
@@ -354,15 +354,52 @@ Status: **done 2026-10-04.** Verified from a clean Docker state (0 images, 0 vol
 | - [x] | **STOP** → commit | |
 
 ### Step 2: Episodes and Granola
-- [ ] `0002_episodes.sql` (final shape above, with P2 applied before any data exists)
-- [ ] Normalisation and canonical content hash, with tests: deterministic, Unicode and whitespace normalised, volatile fields excluded
-- [ ] Idempotent upsert keyed on `(source, external_id)`. Tests written **before** the connector: sync twice gives zero writes; changed content updates in place and clears old-hash derived rows; identical content from two items gives two episodes; a crash mid-sync leaves the watermark unadvanced
-- [ ] Tombstone and restore functions, with tests (purge comes in step 5, but connectors need the tombstone logic now)
-- [ ] Verify Granola's actual API against current docs
-- [ ] Granola connector: pagination, `updated_after` watermark, deletions to tombstones, synthetic fixtures
-- [ ] `./pkos sync granola` on your account; counts only in the terminal
-- [ ] **Report on D13**: which fields the API returns (your notes, enhanced notes, transcript, attendees, calendar link), and whether enhanced notes are model-generated. `sections` layout is proposed for your OK; extraction isn't wired to it until you agree
+
+Status: built and verified; **STOP open pending your answers to G1–G3 below**. 85 tests pass in the container. A real sync stored 10 notes; a second sync wrote nothing; a forced full re-fetch returned 10 unchanged.
+
+- [x] `0002_episodes.sql` (final shape above, with P2 applied before any data exists)
+- [x] Normalisation and canonical content hash, with tests: deterministic, Unicode and whitespace normalised, volatile fields excluded
+- [x] Idempotent upsert keyed on `(source, external_id)`. Tests written **before** the connector: sync twice gives zero writes; changed content updates in place and clears old-hash derived rows; identical content from two items gives two episodes; a crash mid-sync leaves the watermark unadvanced
+- [x] Tombstone and restore functions, with tests (purge comes in step 5, but connectors need the tombstone logic now)
+- [x] Verify Granola's actual API against current docs
+- [x] Granola connector: full listing each run (deletion by diff), details only for notes updated since the `max_updated_at` watermark (5-minute overlap), synthetic fixtures
+- [x] `./pkos sync granola` on your account; counts only in the terminal
+- [x] **Report on D13**: which fields the API returns (your notes, enhanced notes, transcript, attendees, calendar link), and whether enhanced notes are model-generated. `sections` layout is proposed for your OK; extraction isn't wired to it until you agree
 - [ ] **STOP** → commit
+
+#### Step 2 report: what the Granola API actually returns (D13)
+
+Verified live on 2026-10-04 by reading structure only (keys, types, counts, lengths), never content.
+
+**API**
+- `GET /v1/notes`: cursor pagination (`notes`, `hasMore`, `cursor`). `page_size` max 30.
+- `GET /v1/notes/{id}?include=transcript`: full detail. Returns 413 if the transcript is too large, in which case `GET /v1/notes/{id}/transcript` pages it.
+- No deletion events, so deletions are detected by diffing the full listing.
+- Rate limit is 5 requests per second.
+
+**Your data**
+- 10 notes, one owner, 2026-09-21 to 2026-10-02 (12 days). Average meeting 53 minutes.
+
+| Field | Present in | Notes |
+|---|---|---|
+| `summary_text` | 10/10 | Granola's AI summary, **model-generated**. Avg 3,625 chars |
+| transcript | 10/10 | Avg 36k chars once rendered. Speaker `attribution` is only `me` (microphone) or `them` (system audio). 1–3 distinct speaker names per note; half the notes have one name only, so remote speakers are often not told apart |
+| `private_notes_text` | **0/10** | Your own typed notes: empty in every note |
+| `attendees` | 10/10 | **Only you**, in every note |
+| `calendar_event` | **0/10** | Always null: these notes aren't linked to calendar events |
+
+**Body layout as built.** Sections are stored with exact offsets:
+1. `my_notes` (when present)
+2. `transcript`: consecutive same-speaker segments merged into one `Name: text` line
+3. `granola_summary`: `generated: true`
+
+The speaker label is a deterministic rendering of the source's speaker field. Timestamps stay in `raw`.
+
+**Consequences**
+- "Prefer my own notes" has nothing to prefer today. The only person-authored content is the transcript.
+- Granola contributes nothing to `attended` or `invited_to`. Attendees list only you, and with no calendar link, a Granola note can't be joined to its Calendar event.
+- The transcript is about 10× the summary's size, so extracting from it costs about 10× per note. That's trivial at 10 notes (≈90k input tokens) but material at scale.
+
 
 ### Step 3: Eval harness
 - [ ] CSV loader: columns `id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split`; classes `lookup|relational|temporal|aggregate|obligational`; `split` is `test` (150, frozen, reported) or `dev` (30, for tuning); loud failure on malformed rows

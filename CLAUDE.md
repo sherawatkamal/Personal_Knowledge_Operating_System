@@ -17,6 +17,7 @@ Personal knowledge operating system (pkos): a self-hosted system that ingests a 
 | Install and start | `docker compose up` (builds, starts db, runs migrations, prints health) |
 | Any pkos command | `./pkos <command>` (runs in the app container; migrations run first) |
 | Health check | `./pkos health` |
+| Sync sources | `./pkos sync [granola]` (never deletes; reports purge-eligible tombstones) |
 | Apply migrations | `./pkos migrate` (also runs automatically) |
 | Tests | `./pkos test` (pytest in the container; extra args go to pytest) |
 | Lint / format | `docker compose run --rm app ruff check src tests` / `ruff format` |
@@ -25,6 +26,8 @@ Tests create a fresh database per test (`pkos_test_<random>`) on the same server
 
 ## Layout
 
+- `src/pkos/episodes/`: Episode model, `normalize.py` (canonical hash, `build_body`), `store.py` (idempotent upsert, tombstone, watermarks).
+- `src/pkos/connectors/`: `base.py` (Connector, Change), `granola.py`. `src/pkos/sync.py`: the sync engine.
 - `src/pkos/cli.py`: entry point. `config.py`: settings from `PKOS_*` env vars. `logs.py`: secret scrubbing. `db.py`: connections. `migrate.py`: migration runner. `health.py`: health checks.
 - `migrations/NNNN_name.sql`: plain SQL, applied in order.
 - `tests/unit` (no DB) and `tests/integration` (real Postgres, auto-marked `integration`).
@@ -34,6 +37,10 @@ Tests create a fresh database per test (`pkos_test_<random>`) on the same server
 
 - `schema_migrations(version, checksum, applied_at)`: created by the runner itself.
 - `0001_base`: `CREATE EXTENSION vector`.
+- `0002_episodes`:
+  - `sync_state(source, watermark jsonb, last_success_at)`
+  - `episodes`: identity `UNIQUE (source, external_id)`; `content_hash` indexed, not unique; `body` holds source text only, and `sections` gives its exact offsets; `raw` is never hashed; `deleted_at` is the tombstone
+  - view `live_episodes`
 
 The full phase-one schema is in PLAN.md §2. Tables are added only by the step that needs them.
 
@@ -55,6 +62,15 @@ The full phase-one schema is in PLAN.md §2. Tables are added only by the step t
 - Question sets and eval results are personal data and live in `data/`.
 
 **Careful code** (test first, deliberately): idempotent sync and content-hash dedup, the episode-to-fact provenance chain, and anything that deletes. Connectors, scripts and the interface can move fast.
+
+**Connectors**
+- Yield `Change(external_id, episode | None)`. `None` means deleted upstream, and the engine tombstones it.
+- Build `body` with `build_body()` so section offsets are exact, and mark model-written sections `generated`.
+- Put stable fields in `meta` (it's hashed) and anything volatile only in `raw`.
+- Test against synthetic fakes in `tests/fixtures/`, never recorded real responses.
+
+**Sync**
+- One transaction per change. The watermark is written last, so a crash leads to a re-fetch, and the upsert turns the repeats into no-ops.
 
 **Model calls** go through the `llm/` abstraction only, never a provider SDK from business logic. Every extraction is cached by a hash of its exact input, so re-running on unchanged data must make zero model calls.
 
