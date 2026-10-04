@@ -1,4 +1,4 @@
-# Pinned to versions verified native on linux/arm64 and linux/amd64.
+# Pinned. Verified running natively on linux/arm64; all three images also publish linux/amd64.
 FROM python:3.12.15-slim-trixie
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
@@ -14,9 +14,10 @@ WORKDIR /app
 
 # Dependencies first, for layer caching
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+# The uv cache lives in a BuildKit cache mount: faster rebuilds, and not baked into the image.
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-install-project
 
 COPY . .
-RUN uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
 CMD ["pkos", "health"]
