@@ -1,6 +1,6 @@
 # Phase One Implementation Plan
 
-Status: **revision 3, approved**. Steps 1–2 done; step 2 STOP open (G1–G3).
+Status: **revision 3, approved**. Steps 1–2 done. Step 3 next. Step 4b (UI) designed, awaiting approval.
 
 Phase one: connect Granola, Gmail, Google Calendar and (last) Slack; store episodes with provenance; extract facts and commitments; run simple hybrid retrieval with citations; and measure everything with an eval harness that compares configurations. It must be usable on its own.
 
@@ -355,7 +355,7 @@ Status: **done 2026-10-04.** Verified from a clean Docker state (0 images, 0 vol
 
 ### Step 2: Episodes and Granola
 
-Status: built and verified; **STOP open pending your answers to G1–G3 below**. 85 tests pass in the container. A real sync stored 10 notes; a second sync wrote nothing; a forced full re-fetch returned 10 unchanged.
+Status: **done 2026-10-04**; G1–G3 answered. 85 tests pass in the container. A real sync stored 10 notes; a second sync wrote nothing; a forced full re-fetch returned 10 unchanged.
 
 - [x] `0002_episodes.sql` (final shape above, with P2 applied before any data exists)
 - [x] Normalisation and canonical content hash, with tests: deterministic, Unicode and whitespace normalised, volatile fields excluded
@@ -400,7 +400,7 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - Granola contributes nothing to `attended` or `invited_to`. Attendees list only you, and with no calendar link, a Granola note can't be joined to its Calendar event.
 - The transcript is about 10× the summary's size, so extracting from it costs about 10× per note. That's trivial at 10 notes (≈90k input tokens) but material at scale.
 
-**Open questions (step 2 STOP)**
+**Step 2 STOP questions (answered: G1 yes, the 10 notes are the whole archive; G2 option (c); G3 approved)**
 - **G1.** Is 10 notes over 12 days your whole Granola archive? If you have older notes, the key's access scope may be limiting it (the API added Personal/Public note scopes in v1.2.0). Check the key's settings in Granola.
 - **G2.** Extraction sources. Your D13 rule gives: extract from `transcript` (and `my_notes` when present), and exclude `granola_summary` from extraction but keep it in search chunks.
 
@@ -440,7 +440,7 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - [ ] `embed/`: Embedder protocol, fastembed `bge-small-en-v1.5` impl, offset-preserving chunker, one `meta` chunk per episode
 - [ ] `./pkos embed`: only episodes whose current hash has no chunks (zero work on re-run)
 - [ ] Retrievers over `live_chunks`: full text, vector, RRF
-- [ ] Answer stage: cite `[E123]`; citations validated against the retrieved set; abstain below threshold
+- [ ] Answer stage: cites retrieved **items** (`[1]`, `[2]`… mapped to chunk ids, later fact ids), each resolving to an episode **and a character span**, so a citation can open at the supporting text (needed by the step 4b answer view); citations validated against the retrieved set; abstain below threshold. The full retrieved set (rank, per-mode scores, cited or not) is returned with every answer
 - [ ] `./pkos find "<text>"`, a model-free id lookup for writing gold sources
 - [ ] `./pkos ask "..." [--config hybrid]` and the web page (ask box; episode page with span highlighted)
 - [ ] Smoke set: 10–15 Granola questions in `data/smoke.csv`, drafted under the same rules as the main set (§ Question set). These never enter the frozen set: they will have been looked at during development
@@ -453,6 +453,171 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - [ ] `pkos usage [--since] [--by run|purpose|model|source]`: tokens and cost
 - [ ] `pkos purge` and `pkos sync --purge` implemented and tested (purge records its runs here); plain `sync` only reports what is eligible for purge (S1)
 - [ ] **STOP** → commit
+
+### Step 4b: UI (designed now; built after step 5, see U1)
+
+**Design status: awaiting approval.** Nothing is built.
+
+Two audiences: you, debugging extraction and retrieval daily; and a stranger who clones the repo and needs to understand in 30 seconds what this does.
+
+**Stack (D15 stands).** Six screens of lists, detail views and forms suit server-rendered HTML:
+- FastAPI and Jinja2 templates, plus one hand-written CSS file.
+- **htmx, vendored** as a single static file (~50 KB) in `src/pkos/web/static/`. No build step, no CDN.
+
+Next.js would bring a Node toolchain and a build step, or a second service, and break "docker compose up is the install". htmx is used only where a full page reload is wrong: sync-status polling, the search box, and the delete-confirmation count. Every screen still works with JavaScript off, except live polling.
+
+Assets are vendored, not loaded from a CDN, because fully offline operation is a stated commitment, and a CDN call also tells a third party when you open the app.
+
+**Serving**
+- In 4b, the `app` service changes from "print health and exit" to `uvicorn` with port `127.0.0.1:8000` published, bound to **localhost only**. `docker compose up` then means: open http://localhost:8000. Health is still logged at startup.
+
+**Security** (single user, no login, but a local web server is reachable from any web page you visit):
+- **Host header allowlist** (`localhost`, `127.0.0.1`), so a DNS-rebinding page can't read your archive.
+- **CSRF token on every POST**, with a `SameSite=Strict` cookie, so a random website can't trigger "delete source" or "sync" from your browser.
+- Destructive actions need a confirmation page that shows exact counts, and you type the source name to confirm.
+
+#### Screens and routes
+
+| # | Screen | Routes | Reads from | Background work? |
+|---|---|---|---|---|
+| 0 | **Home / Ask** | `GET /`, `POST /ask` → redirect to `/answers/{id}` | `configs/systems/*.toml` (config picker); `asks` (history list); live counts per source | No. Asking is synchronous (seconds) |
+| 1 | **Sources** | `GET /sources`, `POST /sources/{s}/sync`, `GET /sources/{s}/status` (htmx fragment, polled) | `sync_state`, counts from `live_episodes`, tombstone counts, configured scope from Settings, latest `runs` row per source | **Yes: "Sync now"** (U3) |
+| 2 | **Processing log** | `GET /log`, `GET /log/runs/{id}` | `runs`, `model_calls` (step 5) | No |
+| 3 | **Episodes** | `GET /episodes?q=&source=&from=&to=&page=`, `GET /episodes/{id}?hl={start}-{end}` | `live_episodes`; search over `live_chunks` full text; later `live_facts` and `live_commitments` | No |
+| 4 | **Answer** | `GET /answers/{id}` | `asks`, `ask_items` joined to `live_*` | No |
+| 5 | **Settings** | `GET /settings`, `GET`/`POST /sources/{s}/delete`, `POST /purge` | Effective config (`Settings`, `configs/*.toml`); base-table counts for delete and purge previews | No (U4) |
+
+**0. Home / Ask**
+- One question box, a configuration picker (default from config), and a history list of past questions with their config and date.
+- When history is empty, the page shows the stranger's view: one paragraph on what pkos is; per-source counts and last sync; a "local only, nothing leaves this machine except configured model calls" line; and the ask box.
+- Each history entry has **"Ask a follow-up"**. It pre-fills the box with an editable standalone question and does not carry over context (see the chat answer below).
+
+**1. Sources.** One card each for Gmail, Granola, Calendar, Slack, and File upload. Each card shows:
+- **Connection state:** configured / not configured / sync failing.
+- **Last successful sync** and the outcome of the last run.
+- **Counts:** live episodes, plus tombstoned ones (with a purge-eligible count).
+- **Configured scope:**
+  - Gmail: fixed floor 2025-10-04, excluded categories
+  - Calendar: owned calendars, 2025-10-04 to now + 3 months
+  - Granola: API key present, the key's access scope as reported
+  - Slack: scope once decided
+- **Connect button, disabled,** labelled "Credentials come from `.env`, see README". Not a dead button.
+- **Sync now.** Disabled for unconfigured sources.
+
+The File upload card is a placeholder: "Not yet supported." No ingestion.
+
+**2. Processing log.** This is privacy commitment 5, built as a real screen:
+- A run list (newest first): kind, source, config, started, duration, status. Plus counts: inserted / updated / unchanged / tombstoned, cache hits / misses, model calls, tokens in and out, cost.
+- A filter by kind and source, and a running cost total for the period (the same numbers as `pkos usage`).
+- **Run detail:** each model call (purpose, model, tokens, cost, latency, episode link) and any error, already scrubbed.
+- Before step 5 there is nothing persistent to read (U1).
+
+**3. Episodes.** Your main debugging screen, and where citations land.
+- **List:** full-text search plus source and date-range filters; title, source, date and participants per row; paginated.
+- **Detail:**
+  - The body rendered with **section bands**. Model-generated sections, such as `granola_summary`, are visibly labelled "AI-generated by Granola".
+  - Participants with roles; refs; meta; a collapsible raw payload.
+  - Content hash and first-seen / updated times.
+  - `?hl=a-b` scrolls to and highlights a span. This is how citations open.
+- **From step 8:** extracted facts and commitments for the current hash, highlighted inline at their spans. Field-ref facts are listed beside the header fields they cite. A version picker covers the coexisting extractor versions (P1), and rejected quotes are listed.
+- The step 8 HTML dump reuses this detail template rendered to static files, so there's one view of an extraction, not two.
+
+**4. Answer**
+- The question, the configuration that answered (name and config hash), tokens, cost and latency.
+- The answer with numbered citations. Each one opens `/episodes/{id}?hl=start-end` at the supporting span.
+- **The retrieved set** as a table:
+  - rank, source item, chunk or fact, per-mode scores (full text, vector), fused rank;
+  - **cited ✓** marked, so retrieved-but-uncited items and citations are visible side by side.
+- **Abstention is a designed state**, not an error: "Your archive doesn't support an answer to this." Below that: the best retrieved items, their scores, and the threshold, so you can see whether it was a retrieval miss or a correct abstention.
+- If a cited episode has since been deleted upstream, its citation shows "source deleted" and its excerpt is hidden.
+
+**5. Settings**
+- **Read-only effective configuration, each value with where it comes from:**
+  - model profiles and the pricing table (`configs/llm.toml`);
+  - available system configurations;
+  - spend cap and purge window (`.env`).
+- **Actions:**
+  - **Purge now:** the count of eligible tombstones, then a confirmation.
+  - **Delete source:** a confirmation page showing exactly what will go (episodes, chunks, facts, commitments, cache entries, history entries citing it). You type the source name to confirm. This is immediate hard deletion, consistent with `pkos delete`.
+
+#### Data added for 4b
+
+```sql
+-- 0006_asks.sql (number assigned when built)
+CREATE TABLE asks (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    question     text NOT NULL,
+    config_name  text NOT NULL,
+    config_sha   text NOT NULL,
+    answer       text,                      -- NULL when abstained
+    abstained    boolean NOT NULL,
+    run_id       bigint REFERENCES runs(id) ON DELETE SET NULL,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE ask_items (                     -- the retrieved set, cited or not
+    ask_id       bigint NOT NULL REFERENCES asks(id) ON DELETE CASCADE,
+    rank         integer NOT NULL,
+    episode_id   bigint NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    item_kind    text NOT NULL CHECK (item_kind IN ('chunk','fact','commitment')),
+    item_id      bigint NOT NULL,
+    span_start   integer, span_end integer,
+    scores       jsonb NOT NULL DEFAULT '{}'::jsonb,
+    cited_as     integer,                   -- citation number in the answer, NULL if not cited
+    PRIMARY KEY (ask_id, rank)
+);
+CREATE INDEX ask_items_episode_idx ON ask_items (episode_id);
+```
+
+**History is derived personal data, so it obeys real deletion.** An answer's text can quote an episode, so whenever an episode is hard-deleted (purge, `pkos delete`, delete source), every `ask` that **cited** it is deleted in the same transaction. Asks that only retrieved it lose that `ask_items` row through the cascade. Tested like every other cascade.
+
+#### Build phasing
+
+| Built in | What |
+|---|---|
+| **4b** (after step 5) | All six screens over what exists: Ask and Answer with the chunk configurations; history; Episodes without facts; Sources (Granola live, the others shown as not connected); Processing log from `runs`/`model_calls`; Settings read-only plus purge and delete-source; Host/CSRF protection; `asks` tables; demo dataset (U5) |
+| 6, 7 | Gmail and Calendar cards go live (scope display, sync now). No new UI code beyond the connector registry |
+| 8 | Facts, commitments and rejected quotes inline in episode detail; version picker; the HTML dump reuses the template |
+| 9 | Facts configurations in the picker; fact citations in the answer view |
+| 10 | Slack card goes live |
+| Phase two | Person pages, commitments view, graph explorer, follow-up rewriting (see the chat answer below) |
+
+#### The chat question
+
+**I agree with you, and I'd make one change: build follow-ups as query rewriting, never as conversation context.**
+
+Your diagnosis is right. In multi-turn chat the answer model sees earlier turns, so it can answer from them. An answer can then be right in the chat and unsupported by the store. That's also a system the harness never measures.
+
+**How follow-ups keep correspondence with the harness.** A follow-up is a two-stage pipeline, where only the first stage knows the conversation:
+1. **Rewrite.** The previous question, the previous answer and the new turn go in. A **standalone question** comes out ("who else was in that meeting?" becomes "Who attended the 2026-03-02 design review besides Pat?"). It's shown to you, editable, before it runs.
+2. **Answer.** The standalone question runs through **exactly** the pipeline the harness scores: fresh retrieval, and an answer model that **never sees prior turns**. Citations are validated against that fresh retrieval only.
+
+The previous answer may steer the rewrite (which meeting, which person). It can only change *what is retrieved*. It cannot become a source, because nothing reaches the answer stage except the standalone question and the retrieved items.
+
+So every answer is `pipeline(standalone_question)`, which is precisely what the eval harness measures. The only new component, the rewriter, gets its own small eval: follow-up pairs, judged on whether the rewrite preserves intent.
+
+**In 4b:** "Ask a follow-up" pre-fills the box and you write the standalone question yourself. That's the manual version of stage 1, with zero correspondence risk. The automatic rewriter is phase two.
+
+#### Design decisions needing your call
+
+- **U1. Build 4b after step 5, not between 4 and 5.**
+  - Before step 5, runs are only accounted in memory, inside whichever process ran them: the CLI container, not the web process. So the processing log would have nothing real to show, and would get built twice.
+  - Step 5 is small.
+  - Alternatively, keep 4b right after 4 and ship the log screen as "available from step 5". I'd rather not ship a placeholder for a privacy commitment.
+- **U2. Settings are read-only, except delete and purge.**
+  - Editing model profiles, spend caps or the purge window in the UI would create a second source of truth beside `.env` and `configs/`. Writing `.env` from a web process also means a web process writing secrets.
+  - "Hosted vs local" becomes the **configuration picker on Ask**, which matches the harness exactly: a configuration is a file, and local vs hosted are configurations.
+  - Editable settings can come later if you find yourself wanting them.
+- **U3. "Sync now" runs in a background thread inside the web process.**
+  - An initial Gmail sync can take many minutes, longer than any request should.
+  - The thread writes progress to its `runs` row and the card polls `/sources/{s}/status`.
+  - The existing per-source advisory lock stops a UI sync and a CLI sync from interleaving. Sync is already crash-safe, so a web restart mid-sync loses nothing; the next run re-fetches.
+  - No queue and no new service. This is the background work you asked me to name.
+- **U4. Delete source is synchronous,** inside one transaction with a progress spinner. At phase-one sizes (thousands of episodes) the cascade takes seconds. If it ever doesn't, it moves to the same thread pattern as U3.
+- **U5. A synthetic demo dataset for the stranger, and for screenshots.**
+  - A stranger who clones the repo has no credentials, so they'd see six empty screens. You've also ruled out personal data in screenshots.
+  - `pkos demo` would load a committed synthetic corpus (a fictional person's email, calendar and notes, about 50 episodes) into a separate `pkos_demo` database. The UI can be pointed at it with `PKOS_DB_NAME=pkos_demo`.
+  - README screenshots come only from the demo database.
+  - Is this in scope for 4b? I think it's what actually makes the 30-second explanation work.
 
 ### Step 6: Gmail
 - [ ] `google_auth.py`: installed-app flow with **both** Gmail and Calendar read-only scopes requested once, so you consent once. Token in `data/secrets/google_token.json`, mode 0600
@@ -679,6 +844,9 @@ One thing that holds by construction: drafting in step 7b happens before any ext
 | D19 | Calendar: owned calendars, no holiday or subscription calendars; 2025-10-04 to now + 3 months; declined events kept with response status |
 | D20 | Slack is the last step (step 10), after facts retrieval is scored |
 | D21 | Episodes migration stays in step 2, after the Granola API report |
+| G1 | Granola: the 10 notes (2026-09-21 to 2026-10-02) are the whole archive |
+| G2 | Granola extraction reads `transcript` and `my_notes`; `granola_summary` is passed to the prompt as context for naming speakers only, never as a fact source |
+| G3 | Granola body layout approved: `my_notes`, `transcript` (merged `Name: text` turns), `granola_summary` (generated) |
 | F1 | Tuning on `dev` only; `test` ledger warns and marks re-looks after a change; dev results never published |
 | F2 | Full extraction starts only after "extraction prompt frozen"; any later invalidating change is costed before it is made |
 | F3 | Slack thread/day-window rule with migration in one transaction, sticky threads, broadcast handling; tests before the connector |
