@@ -25,9 +25,9 @@ tty_flag=""
 case "${1:-}" in
   test)
     shift
-    exec docker compose run --rm $tty_flag app pytest "$@"
+    exec docker compose --progress quiet run --rm $tty_flag app pytest "$@"
     ;;
   *)
-    exec docker compose run --rm $tty_flag app pkos "$@"
+    exec docker compose --progress quiet run --rm $tty_flag app pkos "$@"
     ;;
 esac
