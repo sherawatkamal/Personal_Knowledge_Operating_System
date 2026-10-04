@@ -7,7 +7,7 @@ secret value is registered with the log scrubber as soon as settings load.
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pkos import logs
@@ -24,8 +24,17 @@ class Settings(BaseSettings):
     db_user: str = "pkos"
     db_password: SecretStr = SecretStr("pkos-local-dev")
 
+    granola_api_key: SecretStr | None = None
+    purge_after_days: int = 30  # tombstones older than this are eligible for `pkos purge`
+
     migrations_dir: Path = REPO_ROOT / "migrations"
     log_level: str = "INFO"
+
+    @field_validator("granola_api_key", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: object) -> object:
+        """`KEY=` in .env means the source is disabled, not an empty credential."""
+        return None if isinstance(v, str) and not v.strip() else v
 
     def model_post_init(self, __context: object) -> None:
         for value in self.__dict__.values():
