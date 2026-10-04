@@ -416,7 +416,7 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 
 
 ### Step 3: Eval harness
-- [ ] CSV loader: columns `id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split`; classes `lookup|relational|temporal|aggregate|obligational`; `split` is `test` (150, frozen, reported) or `dev` (30, for tuning); loud failure on malformed rows
+- [ ] CSV loader: columns `id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split,origin` (`origin` = `user` | `drafted` | `near_miss`); classes `lookup|relational|temporal|aggregate|obligational`; `split` is `test` (150, frozen, reported) or `dev` (30, for tuning); loud failure on malformed rows
 - [ ] Split rules (F1): `pkos eval --split dev|test` (default `dev`); published comparison tables are built from `test` only, and the code path that writes README tables refuses dev results
 - [ ] Test-set ledger (F1): every `test` run appends (config name, config sha256, timestamp) to `data/eval/test_ledger.jsonl`. Scoring `test` with a config whose hash changed after it already has a `test` result prints a loud warning, and the result is marked `†` in every table it appears in, with the number of test-set looks per config. Thresholds, prompts and chunk sizes are tuned on `dev` only (see §4 on why warn-and-mark rather than refuse)
 - [ ] Skip logic (P3). Each question gets one status: `scored`, or skipped with a reason:
@@ -443,7 +443,8 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - [ ] Answer stage: cite `[E123]`; citations validated against the retrieved set; abstain below threshold
 - [ ] `./pkos find "<text>"`, a model-free id lookup for writing gold sources
 - [ ] `./pkos ask "..." [--config hybrid]` and the web page (ask box; episode page with span highlighted)
-- [ ] Score `fts`, `vector`, `hybrid`, `hybrid-local` (Granola-answerable questions only; others skip as `source_not_connected`). Record in README
+- [ ] Smoke set: 10–15 Granola questions in `data/smoke.csv`, drafted under the same rules as the main set (§ Question set). These never enter the frozen set: they will have been looked at during development
+- [ ] Score `fts`, `vector`, `hybrid`, `hybrid-local` on the smoke set. Recorded in README **as a smoke test, not a result**
 - [ ] **STOP** → commit
 
 ### Step 5: Processing log and usage (moved here from step 1)
@@ -470,6 +471,19 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - [ ] Future events synced and structurally extracted, but not semantically extracted while in the future (F4, implemented in step 8)
 - [ ] Re-run baseline configs; record
 - [ ] **STOP** → commit
+
+### Step 7b: Question set (gate: step 8 does not start until the set is frozen)
+
+Extraction tuning starts in step 8, so the frozen set has to exist before it. Drafting it now also guarantees no extractor output can have shaped it. Full procedure in **§ Question set** below.
+
+- [ ] You write 30–40 questions from memory first, before seeing any drafts (Q-1)
+- [ ] Corpus profile: episode counts by source, month, thread size and recurring series; proposed target distribution across 5 classes × 3 sources, for your OK
+- [ ] Fixed, seeded, stratified episode sample and episode clusters for drafting; sample manifest saved
+- [ ] Drafting run: ~250 candidates (single-episode and multi-episode), plus near-miss unanswerables flagged separately
+- [ ] Automatic checks per candidate: the gold episode exists and is live; the answer string is present in, or entailed by, the gold text; lexical overlap with the gold text measured and high-overlap candidates flagged; for near misses, a corpus-wide full-text search for the key terms, with hits shown to you
+- [ ] Review file in `data/questions/review.html`: you accept, edit or reject each one
+- [ ] Merge to 180 (including your own); split dev/test with a seeded stratified script, not by hand; `pkos eval --freeze`
+- [ ] **STOP**: frozen set confirmed
 
 ### Step 8: Fact and commitment extraction
 - [ ] `0005_extraction.sql`, with predicates seeded from §5 D6
@@ -513,6 +527,27 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - [ ] **STOP** → commit
 
 ---
+
+## Question set
+
+There's no corpus to write 180 questions against until Gmail and Calendar land, so the set is built in step 7b. Steps 3–4 use a synthetic CSV and a Granola smoke set.
+
+**Drafting rules**
+1. Drafted from **raw episode text only**, never from extracted facts. Step 7b runs before extraction exists, so this holds by construction.
+2. The drafting model is **neither the answer model nor the judge model**, and preferably a different provider family from both.
+3. Every candidate carries: the question, a proposed gold answer, the gold episode id(s), the class, an as-of date when the answer can change over time, and the drafting mode (single-episode, multi-episode, near-miss, or yours).
+4. Over-generate about 250 candidates; you cut to 180.
+5. **Near-miss unanswerables**: plausible questions about people, projects and dates that appear in the archive, but whose answer is absent. Flagged separately; you check them hardest.
+6. The target distribution across 5 classes × 3 sources is proposed from the corpus profile, for your OK.
+
+**Bias mitigations** (see §4 Q-1 to Q-7 for why each exists)
+- **Q-1.** You write 30–40 questions from memory before seeing any drafts. They're tagged `origin=user` and reported as their own slice.
+- **Q-2.** Relational, temporal and aggregate candidates are drafted from **multi-episode clusters** (a thread, a recurring series, a person over months), and must cite every episode needed.
+- **Q-3.** The drafter is told to paraphrase. Lexical overlap between question and gold text is measured and shown in review, and the result tables report accuracy for low- and high-overlap questions separately.
+- **Q-4.** The sample is stratified and seeded, and its manifest is saved, so selection is reproducible and not driven by salience.
+- **Q-5.** Gold sources mean "sufficient", not "exhaustive": recall@k counts any gold episode. Citation precision is judged per cited episode, so citing a different valid source isn't penalised.
+- **Q-6.** Near misses get a corpus-wide full-text search for their key terms, with the hits shown to you during review.
+- **Q-7.** The dev/test split is made by a seeded stratified script. The smoke set is excluded.
 
 ## Harness configuration design (A2)
 
@@ -604,6 +639,17 @@ One cost to know about: when a message migrates, its day window's hash changes, 
 
 The `./pkos` wrapper runs on the host, where it can check `fdesetup status`. It warns if FileVault is off, but only on `./pkos health` and on the first run, because a warning on every command gets ignored. The README also states that `data/` (tokens, eval results, dumps) is plaintext on disk under the same protection.
 
+**On the question-set procedure** (your design, plus the biases it would otherwise carry):
+- **Q-1. Anchoring and ecological validity (the biggest one).** If every question starts as a model draft, the set measures "what a model thinks is askable from a passage", not what you actually ask. Reviewing 250 plausible drafts anchors you toward accepting them. Your own from-memory questions, written first, are the only part of the set that represents real use, so they're reported as their own slice.
+- **Q-2. Single-episode bias works against the thesis.** A drafter reading one episode at a time produces single-hop questions that chunk retrieval answers well. That understates exactly the relational and temporal advantage the project is testing. Multi-episode drafting fixes it.
+- **Q-3. Lexical overlap inflates the baseline.** A model writing a question from a passage reuses its rare words, which makes keyword and vector retrieval look better than they would on your own phrasing. That narrows the gap the phase-one gate measures. Paraphrasing plus an overlap metric makes the effect visible instead of hidden.
+- **Q-4. Salience selection.** Without a fixed, stratified sample, drafts cluster on memorable threads and skip the mundane bulk your real questions also hit.
+- **Q-5. Gold incompleteness and knowledge updates.** One proving episode is rarely the only one. A later email can also change the answer, so "who owns X" drafted from a March email may be wrong by June. Treating gold as sufficient rather than exhaustive, and adding as-of dates, stops valid answers being scored as wrong.
+- **Q-6. "Genuinely absent" is hard to verify by memory over 12 months.** The drafter has only seen a sample. A corpus-wide search for the key terms catches near misses that are actually answerable.
+- **Q-7. Split leakage.** A hand-made split can drift toward putting easy questions in test. A seeded script can't. The smoke set has been looked at during development, so it's excluded.
+
+One thing that holds by construction: drafting in step 7b happens before any extraction exists, so "the extractor grading its own homework" can't occur. That's also why step 8 is gated on the freeze.
+
 ---
 
 ## 5. Decisions recorded
@@ -618,7 +664,7 @@ The `./pkos` wrapper runs on the host, where it can check `fdesetup status`. It 
 | D7 | Commitments table, same model call, no tracking or resolution, shown only in answers |
 | D8 | fastembed `bge-small-en-v1.5` (384d) in-container; Ollama native on the host |
 | D9 | Facts-only and facts+chunks both scored |
-| D10 | CSV as proposed plus `obligational` class and `split` column; 180 questions = 150 `test` (frozen, reported) + 30 `dev` (tuning); sha256 check |
+| D10 | CSV as proposed plus `obligational` class, `split` and `origin` columns; 180 questions = 150 `test` (frozen, reported) + 30 `dev` (tuning, ≥ 8 unanswerable); built in step 7b per § Question set; sha256 check |
 | D11 | Soft delete with tombstones; purge after 30 days (configurable) only via `pkos purge` or `sync --purge`; local `pkos delete` is immediate |
 | D12 | Gmail from the fixed date 2025-10-04 (not rolling), excluding Spam, Trash, Promotions, Social. Frozen |
 | D13 | Granola fields reported in step 2 before extraction is wired; user notes and transcript preferred over model-generated notes; `section` recorded per span |
@@ -677,7 +723,8 @@ The 17 kept from revision 1 (dropping `mentioned`, `owes`, `due_on`), plus three
 ## 6. What I still need from you
 
 **Before step 2**: Granola API key in `.env`.
-**Before step 3**: `questions.csv` (180 questions with the `split` column, dev including some unanswerable questions) in `data/`. I can build the harness against a synthetic CSV if yours isn't ready.
+**Before step 3**: nothing; the harness is built against a synthetic CSV.
+**Before step 7b**: your 30–40 from-memory questions, written before you see any drafts; a drafting model choice (different from answer and judge).
 **Before step 4**: hosted provider choice, API key, model choice for answer/extract/judge, per-run spend cap; the local model you want in Ollama (I'll suggest candidates that fit 18 GB).
 **Before step 6**: Google Cloud OAuth client (Desktop app) with Gmail and Calendar APIs enabled and you as a test user; `client_secret.json` in `data/secrets/`.
 **Before step 10**: Slack workspace, whether you can create an app there (or need admin approval), and which conversations are in scope (public channels you're in, private channels, DMs, group DMs) and over what window.
