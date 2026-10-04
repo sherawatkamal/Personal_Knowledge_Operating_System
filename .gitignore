@@ -1,0 +1,25 @@
+# Secrets: never committed
+.env
+.env.*
+!.env.example
+*.pem
+client_secret*.json
+*token*.json
+
+# Personal data: questions, eval results, dumps, OAuth tokens, model downloads
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
