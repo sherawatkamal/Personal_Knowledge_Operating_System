@@ -5,8 +5,9 @@ Personal knowledge operating system (pkos): a self-hosted system that ingests a 
 ## Stack
 
 - Python 3.12, managed with uv (`pyproject.toml`, `uv.lock`). CLI with typer.
-- Postgres 17 with pgvector (`pgvector/pgvector:pg17`), psycopg 3. No ORM.
-- Docker Compose: `db` (Postgres, no published port), `migrate` (one-shot), `app`.
+- Postgres 17.11 + pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17`), psycopg 3. No ORM.
+- Images are pinned (`python:3.12.15-slim-trixie`, `ghcr.io/astral-sh/uv:0.12.23`) and verified native on linux/arm64. Bump deliberately, not by tag drift.
+- Docker Compose: `db` (Postgres, no published port), `migrate` (one-shot), `app` (prints health and exits, for now). `docker compose up` stays attached to the db; use `up -d` to detach.
 - Later steps add: fastembed (local embeddings), a thin LLM layer with hosted and Ollama implementations, FastAPI for one page.
 
 ## Commands

@@ -1,6 +1,7 @@
-FROM python:3.12-slim
+# Pinned to versions verified native on linux/arm64 and linux/amd64.
+FROM python:3.12.15-slim-trixie
 
-COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # The venv lives outside /app so the dev bind mount of the repo does not hide it.
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \

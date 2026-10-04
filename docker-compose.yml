@@ -13,7 +13,7 @@ x-app: &app
 
 services:
   db:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:0.8.7-pg17   # pgvector 0.8.7 on Postgres 17
     environment:
       POSTGRES_DB: pkos
       POSTGRES_USER: pkos
