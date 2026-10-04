@@ -400,6 +400,20 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - Granola contributes nothing to `attended` or `invited_to`. Attendees list only you, and with no calendar link, a Granola note can't be joined to its Calendar event.
 - The transcript is about 10× the summary's size, so extracting from it costs about 10× per note. That's trivial at 10 notes (≈90k input tokens) but material at scale.
 
+**Open questions (step 2 STOP)**
+- **G1.** Is 10 notes over 12 days your whole Granola archive? If you have older notes, the key's access scope may be limiting it (the API added Personal/Public note scopes in v1.2.0). Check the key's settings in Granola.
+- **G2.** Extraction sources. Your D13 rule gives: extract from `transcript` (and `my_notes` when present), and exclude `granola_summary` from extraction but keep it in search chunks.
+
+  The catch: the transcript often labels remote speakers only as `them`. So "I'll send it Friday" from a remote person can't be attributed to a named person from the transcript alone. The summary does name people, but it's model-generated.
+
+  Options:
+  - (a) Transcript only (strict).
+  - (b) Also extract from the summary, with every such fact carrying `section = granola_summary` and a confidence cap, so it's filterable.
+  - (c) Transcript only, but let the extraction prompt see the summary as context for resolving names, not as a source of facts.
+
+  I lean (c): it keeps provenance on person-authored text and uses the summary only to help name speakers.
+- **G3.** Approve the body layout above. Changing it later just re-hashes the Granola episodes (10 updates, no data loss), so this is cheap to revisit.
+
 
 ### Step 3: Eval harness
 - [ ] CSV loader: columns `id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split`; classes `lookup|relational|temporal|aggregate|obligational`; `split` is `test` (150, frozen, reported) or `dev` (30, for tuning); loud failure on malformed rows
