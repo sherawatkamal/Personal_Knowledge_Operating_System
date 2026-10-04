@@ -340,7 +340,7 @@ Status: code done and verified against a local Postgres 16 + pgvector (30 tests 
 |---|---|---|
 | - [x] | `git init`, `.gitignore`, `.env.example` | **essential** |
 | - [ ] | `pyproject.toml`, `Dockerfile`, `docker-compose.yml` (pgvector on Postgres 17, named volume, healthcheck) | **essential** |
-| - [ ] | `./pkos` wrapper, so the single sync command is `./pkos sync`; warns on every run if FileVault is off (S2) | **essential** |
+| - [ ] | `./pkos` wrapper, so the single sync command is `./pkos sync`; warns if FileVault is off, on `health` and first run only (S2) | **essential** |
 | - [x] | Migration runner (checksums, refuses edited migrations) and `0001_base.sql`; runs on container start | **essential** |
 | - [x] | Runner idempotency tests: migrate twice is a no-op, an edited applied migration is refused, a failed migration rolls back | **essential** |
 | - [x] | `pkos health`: DB reachable, extensions present, migrations current | **essential** |
@@ -546,12 +546,12 @@ One cost to know about: when a message migrates, its day window's hash changes, 
 
 **On S1:** adopted as stated.
 
-**On S2: I recommend declaring encryption at rest phase two in the README, not building it after step 5.** Reasons:
-1. Postgres has no built-in transparent encryption. Column-level encryption (pgcrypto) would encrypt exactly the columns full-text and vector search must read, so search breaks or the plaintext leaks back out through the indexes.
-2. The realistic option is an encrypted volume. On Docker Desktop for Mac, that means an encrypted APFS disk image holding the data directory, which is a macOS-specific setup step, not code in this repo.
-3. FileVault already provides full-disk encryption with a key you hold, which covers the threat the proposal names: a stolen disk.
+**On S2: encryption at rest is phase two, stated in the README.**
+- FileVault covers the stolen-disk threat.
+- An encrypted volume adds nothing beyond it on a single-user machine.
+- Application-level encryption would break full-text and vector search.
 
-So the README states: phase one relies on OS full-disk encryption, here's why app-level encryption is deferred, and here's what phase two will do. The `./pkos` wrapper runs on the host, where it **can** check `fdesetup status`, so it warns on every invocation if FileVault is off. That's a few lines of shell, done in step 1. Also stated in the README: `data/` (tokens, eval results, dumps) is plaintext on disk under the same protection.
+The `./pkos` wrapper runs on the host, where it can check `fdesetup status`. It warns if FileVault is off, but only on `./pkos health` and on the first run, because a warning on every command gets ignored. The README also states that `data/` (tokens, eval results, dumps) is plaintext on disk under the same protection.
 
 ---
 
@@ -587,7 +587,7 @@ So the README states: phase one relies on OS full-disk encryption, here's why ap
 | F3 | Slack thread/day-window rule with migration in one transaction, sticky threads, broadcast handling; tests before the connector |
 | F4 | Future events: structural extraction only, semantic once they've happened |
 | S1 | `sync` never purges; it reports what is eligible |
-| S2 | Encryption at rest declared phase two in the README with reasons; wrapper warns if FileVault is off |
+| S2 | Encryption at rest is phase two: FileVault covers the stolen-disk threat, an encrypted volume adds nothing beyond it on a single-user machine, and application-level encryption would break full-text and vector search. Wrapper warns if FileVault is off, on `health` and first run only |
 
 ### D6 predicates (20)
 

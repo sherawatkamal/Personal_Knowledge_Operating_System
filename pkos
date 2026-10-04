@@ -5,11 +5,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# S2: phase one relies on OS full-disk encryption for data at rest.
-if [[ "$(uname)" == "Darwin" ]] && command -v fdesetup >/dev/null 2>&1; then
-  if ! fdesetup status 2>/dev/null | grep -q "FileVault is On"; then
-    echo "WARNING: FileVault is off. Your archive is stored unencrypted on disk. See README, 'Encryption at rest'." >&2
+# S2: phase one relies on OS full-disk encryption for data at rest. Checked on the host
+# (the container can't see FileVault), and only on `health` and on the first run, so the
+# warning stays meaningful instead of becoming noise.
+first_run_marker="data/.first_run_done"
+if [[ "${1:-}" == "health" || ! -e "$first_run_marker" ]]; then
+  if [[ "$(uname)" == "Darwin" ]] && command -v fdesetup >/dev/null 2>&1; then
+    if ! fdesetup status 2>/dev/null | grep -q "FileVault is On"; then
+      echo "WARNING: FileVault is off. Your archive is stored unencrypted on disk. See README, 'Encryption at rest'." >&2
+    fi
   fi
+  mkdir -p data && touch "$first_run_marker"
 fi
 
 # macOS ships bash 3.2, where an empty array trips `set -u`, so this is a plain string.

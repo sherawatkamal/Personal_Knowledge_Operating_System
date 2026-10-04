@@ -10,12 +10,14 @@ This runs on your machine. The database lives in a Docker volume on your disk an
 
 **Phase one relies on your operating system's full-disk encryption (FileVault on macOS). Application-level encryption is deferred to phase two.**
 
-This is a decision, not an omission. Here's why:
-- **Postgres has no built-in transparent encryption.** Column-level encryption would cover exactly the text that full-text and vector search must read. Search would either stop working, or the plaintext would leak back out through the indexes.
-- **The workable option is an encrypted volume.** On Docker Desktop for Mac that's an encrypted disk image holding the database files: an OS-level setup step rather than application code.
-- **FileVault already covers the main threat.** It gives full-disk encryption with a key you hold, which protects against a stolen disk.
+This is a decision, not an omission:
+- **FileVault covers the stolen-disk threat.** That is the threat the privacy model names, and full-disk encryption with a key you hold addresses it.
+- **An encrypted volume adds nothing beyond FileVault on a single-user machine.** It would protect the same data against the same threat, with the same person holding the key.
+- **Application-level encryption would break search.** Full-text and vector search need to read the text they index, so encrypting it inside the application would break both.
 
-The `./pkos` wrapper checks FileVault on every run and warns if it's off. The `data/` directory (OAuth tokens, eval results, extraction dumps) is plaintext on disk under the same protection.
+So encryption at rest is phase two.
+
+The `./pkos` wrapper checks FileVault on `./pkos health` and on its first run, and warns if it's off. The `data/` directory (OAuth tokens, eval results, extraction dumps) is plaintext on disk under the same protection.
 
 ## Install
 
