@@ -1,6 +1,6 @@
 # Phase One Implementation Plan
 
-Status: **revision 3, approved**. Steps 1–2 done. Step 3 next. Step 4b (UI) designed, awaiting approval.
+Status: **revision 3, approved**. Steps 1–2 done. Step 3 in progress. Step 4b (UI) design approved; built after step 5.
 
 Phase one: connect Granola, Gmail, Google Calendar and (last) Slack; store episodes with provenance; extract facts and commitments; run simple hybrid retrieval with citations; and measure everything with an eval harness that compares configurations. It must be usable on its own.
 
@@ -440,7 +440,7 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 - [ ] `embed/`: Embedder protocol, fastembed `bge-small-en-v1.5` impl, offset-preserving chunker, one `meta` chunk per episode
 - [ ] `./pkos embed`: only episodes whose current hash has no chunks (zero work on re-run)
 - [ ] Retrievers over `live_chunks`: full text, vector, RRF
-- [ ] Answer stage: cites retrieved **items** (`[1]`, `[2]`… mapped to chunk ids, later fact ids), each resolving to an episode **and a character span**, so a citation can open at the supporting text (needed by the step 4b answer view); citations validated against the retrieved set; abstain below threshold. The full retrieved set (rank, per-mode scores, cited or not) is returned with every answer
+- [ ] Answer stage: output is a list of **claims**, each with its citations (needed for the deletion rule in 4b). It cites retrieved **items** (`[1]`, `[2]`… mapped to chunk ids, later fact ids), each resolving to an episode **and a character span**, so a citation can open at the supporting text (needed by the step 4b answer view); citations validated against the retrieved set; abstain below threshold. The full retrieved set (rank, per-mode scores, cited or not) is returned with every answer
 - [ ] `./pkos find "<text>"`, a model-free id lookup for writing gold sources
 - [ ] `./pkos ask "..." [--config hybrid]` and the web page (ask box; episode page with span highlighted)
 - [ ] Smoke set: 10–15 Granola questions in `data/smoke.csv`, drafted under the same rules as the main set (§ Question set). These never enter the frozen set: they will have been looked at during development
@@ -456,7 +456,7 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 
 ### Step 4b: UI (designed now; built after step 5, see U1)
 
-**Design status: awaiting approval.** Nothing is built.
+**Design status: approved 2026-10-04** (U1–U5 agreed; deletion rule revised, see below). Built after step 5.
 
 Two audiences: you, debugging extraction and retrieval daily; and a stranger who clones the repo and needs to understand in 30 seconds what this does.
 
@@ -568,7 +568,18 @@ CREATE TABLE ask_items (                     -- the retrieved set, cited or not
 CREATE INDEX ask_items_episode_idx ON ask_items (episode_id);
 ```
 
-**History is derived personal data, so it obeys real deletion.** An answer's text can quote an episode, so whenever an episode is hard-deleted (purge, `pkos delete`, delete source), every `ask` that **cited** it is deleted in the same transaction. Asks that only retrieved it lose that `ask_items` row through the cascade. Tested like every other cascade.
+**History keeps your record of asking; deleted content leaves it** (your rule, plus one refinement):
+- Answers are stored as **claims**: `[{text, cites: [n]}]`, not one blob. This is a requirement on the step 4 answer stage.
+- **When a cited episode is hard-deleted** (purge, `pkos delete`, delete source), in the same transaction:
+  - the ask is marked `has_deleted_source`;
+  - that citation's excerpt and span are stripped, and its `ask_items` row is removed by the cascade;
+  - **any claim whose only support was that episode has its text replaced** with "[removed: source deleted]".
+
+  Claims also supported by a surviving citation, the question, the configuration, the date, and the other citations all stay.
+- **Why the refinement:** the claim's sentence is itself derived from the deleted source ("Priya's address is 12 Elm St [3]"). Keeping it would keep the deleted content. Deleting claims that only the deleted source supported honours both "don't delete my record of asking" and "real deletion".
+- **Tombstoned episodes** get the same treatment at render time, without changing anything stored, so it reverses automatically if the item is restored. Every path is tested like the other cascades.
+
+The `asks` table gains `has_deleted_source boolean NOT NULL DEFAULT false` and `answer jsonb` (the claims) in place of `answer text`.
 
 #### Build phasing
 
@@ -599,21 +610,21 @@ So every answer is `pipeline(standalone_question)`, which is precisely what the 
 
 #### Design decisions needing your call
 
-- **U1. Build 4b after step 5, not between 4 and 5.**
+- **U1. Build 4b after step 5, not between 4 and 5.** *(Agreed.)*
   - Before step 5, runs are only accounted in memory, inside whichever process ran them: the CLI container, not the web process. So the processing log would have nothing real to show, and would get built twice.
   - Step 5 is small.
   - Alternatively, keep 4b right after 4 and ship the log screen as "available from step 5". I'd rather not ship a placeholder for a privacy commitment.
-- **U2. Settings are read-only, except delete and purge.**
+- **U2. Settings are read-only, except delete and purge.** *(Agreed.)*
   - Editing model profiles, spend caps or the purge window in the UI would create a second source of truth beside `.env` and `configs/`. Writing `.env` from a web process also means a web process writing secrets.
   - "Hosted vs local" becomes the **configuration picker on Ask**, which matches the harness exactly: a configuration is a file, and local vs hosted are configurations.
   - Editable settings can come later if you find yourself wanting them.
-- **U3. "Sync now" runs in a background thread inside the web process.**
+- **U3. "Sync now" runs in a background thread inside the web process.** *(Agreed.)* The Sources card shows **live progress** while a sync runs (counts so far and elapsed time, polled from its `runs` row). **A failed background sync shows on the card**: error (scrubbed), when, and the last good sync. Not only in logs.
   - An initial Gmail sync can take many minutes, longer than any request should.
   - The thread writes progress to its `runs` row and the card polls `/sources/{s}/status`.
   - The existing per-source advisory lock stops a UI sync and a CLI sync from interleaving. Sync is already crash-safe, so a web restart mid-sync loses nothing; the next run re-fetches.
   - No queue and no new service. This is the background work you asked me to name.
-- **U4. Delete source is synchronous,** inside one transaction with a progress spinner. At phase-one sizes (thousands of episodes) the cascade takes seconds. If it ever doesn't, it moves to the same thread pattern as U3.
-- **U5. A synthetic demo dataset for the stranger, and for screenshots.**
+- **U4. Delete source is synchronous,** *(agreed)* inside one transaction with a progress spinner. At phase-one sizes (thousands of episodes) the cascade takes seconds. If it ever doesn't, it moves to the same thread pattern as U3.
+- **U5. A synthetic demo dataset for the stranger, and for screenshots.** *(Agreed, in scope.)* Generated by a **seeded script committed to the repo, never a committed data file**, so no real content can leak into it. It must exercise every screen state: an abstention, a multi-source answer, an episode with rejected extraction spans, a tombstoned episode, a failed sync, and an answer with a deleted source.
   - A stranger who clones the repo has no credentials, so they'd see six empty screens. You've also ruled out personal data in screenshots.
   - `pkos demo` would load a committed synthetic corpus (a fictional person's email, calendar and notes, about 50 episodes) into a separate `pkos_demo` database. The UI can be pointed at it with `PKOS_DB_NAME=pkos_demo`.
   - README screenshots come only from the demo database.
@@ -847,6 +858,7 @@ One thing that holds by construction: drafting in step 7b happens before any ext
 | G1 | Granola: the 10 notes (2026-09-21 to 2026-10-02) are the whole archive |
 | G2 | Granola extraction reads `transcript` and `my_notes`; `granola_summary` is passed to the prompt as context for naming speakers only, never as a fact source |
 | G3 | Granola body layout approved: `my_notes`, `transcript` (merged `Name: text` turns), `granola_summary` (generated) |
+| UI | Step 4b approved: server-rendered with bundled htmx; localhost-only with Host allowlist and CSRF; read-only settings; background sync thread with live progress and visible failures; synchronous delete; seeded-script demo dataset; chunk-level citations; follow-ups as editable standalone questions (rewriter in phase two, with its own eval); history keeps asks, strips deleted sources |
 | F1 | Tuning on `dev` only; `test` ledger warns and marks re-looks after a change; dev results never published |
 | F2 | Full extraction starts only after "extraction prompt frozen"; any later invalidating change is costed before it is made |
 | F3 | Slack thread/day-window rule with migration in one transaction, sticky threads, broadcast handling; tests before the connector |
