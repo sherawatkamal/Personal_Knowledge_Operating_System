@@ -90,6 +90,65 @@ def sync_cmd(source: str = typer.Argument(None, help="Sync only this source.")) 
         raise typer.Exit(1)
 
 
+@app.command("eval")
+def eval_cmd(
+    config: list[str] = typer.Option([], "--config", "-c", help="Config name; repeatable."),
+    all_configs: bool = typer.Option(False, "--all", help="Every config in configs/systems."),
+    split: str = typer.Option("dev", help="dev (tuning) or test (frozen, reported)."),
+    questions: str = typer.Option(None, help="Question CSV (default: data/questions.csv)."),
+    do_freeze: bool = typer.Option(False, "--freeze", help="Freeze the question set and exit."),
+    markdown: bool = typer.Option(False, help="Print the publishable markdown tables."),
+) -> None:
+    """Score configurations against the question set and print the comparison table."""
+    from pathlib import Path
+
+    from pkos.eval import configs as cfg
+    from pkos.eval import questions as qmod
+    from pkos.eval import report, runner, scoring
+
+    settings = get_settings()
+    path = Path(questions) if questions else settings.data_dir / "questions.csv"
+    if split not in qmod.SPLITS:
+        log.error("--split must be one of %s", ", ".join(qmod.SPLITS))
+        raise typer.Exit(2)
+    try:
+        qset = qmod.load(path)
+    except (OSError, qmod.QuestionSetError) as e:
+        log.error("%s", e)
+        raise typer.Exit(1) from None
+    if do_freeze:
+        _echo(f"froze {path.name} ({qset.sha256[:12]}) -> {runner.freeze(qset, settings.data_dir)}")
+        return
+    try:
+        names = list(cfg.available()) if all_configs else config
+        if not names:
+            log.error("give --config NAME (repeatable) or --all")
+            raise typer.Exit(2)
+        chosen = cfg.resolve(names)
+    except cfg.ConfigError as e:
+        log.error("%s", e)
+        raise typer.Exit(1) from None
+
+    judge = scoring.Judge(
+        cache=scoring.JudgeCache(settings.data_dir / "eval" / "judge_cache.jsonl")
+    )
+    with db.connect(settings, autocommit=True) as conn:
+        run = runner.run_eval(conn, qset, chosen, split, judge, settings.data_dir)
+    text = report.render_text(run)
+    out = runner.write_results(
+        run, settings.data_dir, {"tables.txt": text, "tables.csv": report.render_csv(run)}
+    )
+    if markdown:
+        try:
+            _echo(report.render_markdown(run))
+        except report.NotPublishable as e:
+            log.error("%s", e)
+            raise typer.Exit(1) from None
+    else:
+        _echo(text)
+    _echo(f"judge model calls: {judge.model_calls}   results: {out}")
+
+
 @app.command("health")
 def health_cmd() -> None:
     """Check the database, extensions and migrations."""

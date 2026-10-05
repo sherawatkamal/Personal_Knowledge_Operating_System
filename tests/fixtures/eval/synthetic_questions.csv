@@ -1,0 +1,15 @@
+id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split,origin
+q01,What is the Q3 budget?,lookup,true,"40,000 dollars",granola:syn_g1,exact,granola,test,drafted
+q02,What did I agree to send after the budget review?,obligational,true,The revised deck by Friday,granola:syn_g1,model,granola,test,drafted
+q03,Who introduced me to Sam Rivera?,relational,true,Pat,gmail:syn_m1,exact,gmail,test,user
+q04,When did Jordan Lee join the platform team?,temporal,true,March,granola:syn_g2,exact,granola,test,drafted
+q05,Where is the offsite?,lookup,true,Lisbon,gmail:syn_m2,exact,gmail,dev,drafted
+q06,What date is the offsite?,temporal,true,May 14,gmail:syn_m2,exact,gmail,dev,user
+q07,Which topics came up across the budget and hiring meetings?,aggregate,true,Budget and hiring,granola:syn_g1;granola:syn_g2,model,granola,test,drafted
+q08,What is Sam Rivera's phone number?,lookup,false,,,model,gmail,test,near_miss
+q09,Who introduced me to Jordan Lee?,relational,false,,,model,granola;gmail,dev,near_miss
+q10,When is the Lisbon offsite dinner booked?,temporal,false,,,model,gmail,test,user
+q11,What time is the design review?,lookup,true,2pm,gcal:syn_e1,exact,gcal,test,drafted
+q12,What is the contract value?,lookup,true,"12,000 dollars",gmail:syn_m9,exact,gmail,test,drafted
+q13,When is the contract renewal?,temporal,true,June 1,gmail:syn_m3,exact,gmail,test,drafted
+q14,Who is sending the revised deck?,obligational,true,Ada,granola:syn_g1,exact,granola,dev,drafted

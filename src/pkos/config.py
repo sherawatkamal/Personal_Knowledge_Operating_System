@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     purge_after_days: int = 30  # tombstones older than this are eligible for `pkos purge`
 
     migrations_dir: Path = REPO_ROOT / "migrations"
+    data_dir: Path = REPO_ROOT / "data"  # gitignored: questions, eval results, tokens
     log_level: str = "INFO"
 
     @field_validator("granola_api_key", mode="before")
