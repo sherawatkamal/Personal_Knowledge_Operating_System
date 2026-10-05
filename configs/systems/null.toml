@@ -1,0 +1,5 @@
+name = "null"
+description = "Always abstains. The floor: every real configuration must beat it."
+
+[system]
+kind = "null"

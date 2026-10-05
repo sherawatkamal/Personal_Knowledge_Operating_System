@@ -1,0 +1,6 @@
+name = "oracle"
+description = "Answers with the gold answer and cites the gold sources. Harness self-check: must score 1.0."
+diagnostic = true   # reads gold data; refused by --markdown and never published
+
+[system]
+kind = "oracle"
