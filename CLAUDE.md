@@ -18,6 +18,7 @@ Personal knowledge operating system (pkos): a self-hosted system that ingests a 
 | Any pkos command | `./pkos <command>` (runs in the app container; migrations run first) |
 | Health check | `./pkos health` |
 | Sync sources | `./pkos sync [granola]` (never deletes; reports purge-eligible tombstones) |
+| Eval | `./pkos eval -c null -c oracle [--split dev\|test] [--questions PATH] [--markdown]`; `--all`; `--freeze` |
 | Apply migrations | `./pkos migrate` (also runs automatically) |
 | Tests | `./pkos test` (pytest in the container; extra args go to pytest) |
 | Lint / format | `docker compose run --rm app ruff check src tests` / `ruff format` |
@@ -28,6 +29,7 @@ Tests create a fresh database per test (`pkos_test_<random>`) on the same server
 
 - `src/pkos/episodes/`: Episode model, `normalize.py` (canonical hash, `build_body`), `store.py` (idempotent upsert, tombstone, watermarks).
 - `src/pkos/connectors/`: `base.py` (Connector, Change), `granola.py`. `src/pkos/sync.py`: the sync engine.
+- `src/pkos/eval/`: `questions.py` (CSV + validation), `configs.py` (`configs/systems/*.toml`), `systems.py` (System interface, null, oracle), `scoring.py` (gold resolution and skip reasons, judge and cache), `runner.py` (freeze, test ledger, results), `report.py` (tables).
 - `src/pkos/cli.py`: entry point. `config.py`: settings from `PKOS_*` env vars. `logs.py`: secret scrubbing. `db.py`: connections. `migrate.py`: migration runner. `health.py`: health checks.
 - `migrations/NNNN_name.sql`: plain SQL, applied in order.
 - `tests/unit` (no DB) and `tests/integration` (real Postgres, auto-marked `integration`).
@@ -71,6 +73,12 @@ The full phase-one schema is in PLAN.md §2. Tables are added only by the step t
 
 **Sync**
 - One transaction per change. The watermark is written last, so a crash leads to a re-fetch, and the upsert turns the repeats into no-ops.
+
+**Eval**
+- A configuration is a file; never add a code path for an ablation.
+- Tune on `dev` only. `test` runs are recorded in the ledger, and a changed config gets a †.
+- Diagnostic configs (oracle) never reach published (markdown) tables.
+- The synthetic question set and corpus live in `tests/fixtures/` and are generated in code. Your real `questions.csv`, results, ledger and freeze files live in `data/eval/`.
 
 **Model calls** go through the `llm/` abstraction only, never a provider SDK from business logic. Every extraction is cached by a hash of its exact input, so re-running on unchanged data must make zero model calls.
 

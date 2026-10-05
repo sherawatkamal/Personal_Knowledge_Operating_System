@@ -1,6 +1,6 @@
 # Phase One Implementation Plan
 
-Status: **revision 3, approved**. Steps 1–2 done. Step 3 in progress. Step 4b (UI) design approved; built after step 5.
+Status: **revision 3, approved**. Steps 1–3 done (step 3 STOP open). Step 4b (UI) design approved; built after step 5.
 
 Phase one: connect Granola, Gmail, Google Calendar and (last) Slack; store episodes with provenance; extract facts and commitments; run simple hybrid retrieval with citations; and measure everything with an eval harness that compares configurations. It must be usable on its own.
 
@@ -416,22 +416,25 @@ The speaker label is a deterministic rendering of the source's speaker field. Ti
 
 
 ### Step 3: Eval harness
-- [ ] CSV loader: columns `id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split,origin` (`origin` = `user` | `drafted` | `near_miss`); classes `lookup|relational|temporal|aggregate|obligational`; `split` is `test` (150, frozen, reported) or `dev` (30, for tuning); loud failure on malformed rows
-- [ ] Split rules (F1): `pkos eval --split dev|test` (default `dev`); published comparison tables are built from `test` only, and the code path that writes README tables refuses dev results
-- [ ] Test-set ledger (F1): every `test` run appends (config name, config sha256, timestamp) to `data/eval/test_ledger.jsonl`. Scoring `test` with a config whose hash changed after it already has a `test` result prints a loud warning, and the result is marked `†` in every table it appears in, with the number of test-set looks per config. Thresholds, prompts and chunk sizes are tuned on `dev` only (see §4 on why warn-and-mark rather than refuse)
-- [ ] Skip logic (P3). Each question gets one status: `scored`, or skipped with a reason:
+
+Status: built; **STOP open for your review**. 122 tests pass. Shipped configs: `null` (floor) and `oracle` (diagnostic ceiling: reads gold, must score 1.0, never published). The model judge's interface and cache are built; the model itself is wired in step 4 with the `llm/` layer. Until then, any question needing it fails loudly with "arrives in step 4"; none did in the runs above.
+
+- [x] CSV loader: columns `id,question,class,answerable,gold_answer,gold_sources,judge,sources_needed,split,origin` (`origin` = `user` | `drafted` | `near_miss`); classes `lookup|relational|temporal|aggregate|obligational`; `split` is `test` (150, frozen, reported) or `dev` (30, for tuning); loud failure on malformed rows
+- [x] Split rules (F1): `pkos eval --split dev|test` (default `dev`); published comparison tables are built from `test` only, and the code path that writes README tables refuses dev results
+- [x] Test-set ledger (F1): every `test` run appends (config name, config sha256, timestamp) to `data/eval/test_ledger.jsonl`. Scoring `test` with a config whose hash changed after it already has a `test` result prints a loud warning, and the result is marked `†` in every table it appears in, with the number of test-set looks per config. Thresholds, prompts and chunk sizes are tuned on `dev` only (see §4 on why warn-and-mark rather than refuse)
+- [x] Skip logic (P3). Each question gets one status: `scored`, or skipped with a reason:
   - `source_not_connected`: a source in `sources_needed` has never synced successfully
   - `gold_not_found`: the source is connected but a gold id is missing. This is distinct because it's usually a typo in the CSV, so it's listed by question id
   - `gold_tombstoned`: the gold episode is soft-deleted
 
   Never an error. The table header reports scored/skipped counts by reason.
-- [ ] Configuration loading from `configs/systems/*.toml` (design below). The harness takes configurations, never system names
-- [ ] Runner over N configurations in one invocation, with a null config (always abstains) to prove the pipeline end to end
-- [ ] Scorers: correctness (exact or model judge with gold answer and gold sources attached), recall@k on gold sources, citation precision, abstention correctness, tokens, p50/p95 latency, cost
-- [ ] Judge cache keyed by hash of (question, answer, gold answer, gold source ids, judge model, judge prompt)
-- [ ] Freeze check: results record the CSV sha256 and the split assignment; the run warns loudly if either differs from what `pkos eval --freeze` recorded in `data/eval/frozen.json`. Changing a question's split after freezing is reported as a freeze violation
-- [ ] Comparison output (design below), plus full per-question results to `data/eval/<timestamp>/`
-- [ ] Until step 5, token and cost totals come from in-process accounting in the `llm/` layer, printed at the end of each command
+- [x] Configuration loading from `configs/systems/*.toml` (design below). The harness takes configurations, never system names
+- [x] Runner over N configurations in one invocation, with a null config (always abstains) to prove the pipeline end to end
+- [x] Scorers: correctness (exact or model judge with gold answer and gold sources attached), recall@k on gold sources, citation precision, abstention correctness, tokens, p50/p95 latency, cost
+- [x] Judge cache keyed by hash of (question, answer, gold answer, gold source ids, judge model, judge prompt)
+- [x] Freeze check: results record the CSV sha256 and the split assignment; the run warns loudly if either differs from what `pkos eval --freeze` recorded in `data/eval/frozen.json`. Changing a question's split after freezing is reported as a freeze violation
+- [x] Comparison output (design below), plus full per-question results to `data/eval/<timestamp>/`
+- [x] Until step 5, token and cost totals come from in-process accounting in the `llm/` layer, printed at the end of each command
 - [ ] **STOP** → commit
 
 ### Step 4: Baseline over raw episodes
