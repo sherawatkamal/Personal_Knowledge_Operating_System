@@ -74,3 +74,26 @@ def test_percentile_nearest_rank():
     assert percentile([], 50) is None
     assert percentile([5, 1, 3], 50) == 3
     assert percentile(list(range(1, 101)), 95) == 95
+
+
+@pytest.mark.parametrize(
+    "answer, gold, expected",
+    [
+        ("Pat introduced you to Sam Rivera. [1]", "Pat", True),
+        ("The Q3 budget is 40,000 dollars [2].", "40,000 dollars", True),
+        ("Jordan joined in March 2026.", "March", True),
+        ("Patricia introduced you.", "Pat", False),  # whole words only
+        ("It was 140,000 dollars.", "40,000 dollars", False),
+        ("Sam introduced you to Pat [3]", "Pat introduced", False),
+    ],
+)
+def test_exact_judge_is_whole_word_containment(answer, gold, expected):
+    from pkos.eval.scoring import contains_gold
+
+    assert contains_gold(answer, gold) is expected
+
+
+def test_citation_markers_never_count_as_answer_text():
+    from pkos.eval.scoring import contains_gold
+
+    assert not contains_gold("See source [1].", "1")

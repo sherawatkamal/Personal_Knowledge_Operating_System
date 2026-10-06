@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import string
 import unicodedata
 from collections.abc import Callable
@@ -86,9 +87,20 @@ class Judgement:
 _PUNCT = {ord(c): " " for c in string.punctuation + "“”‘’–—…"}
 
 
+_CITATION = re.compile(r"\[\d+\]")
+
+
 def normalize_answer(text: str) -> str:
+    text = _CITATION.sub(" ", text)
     text = unicodedata.normalize("NFKC", text).casefold().translate(_PUNCT)
     return " ".join(text.split())
+
+
+def contains_gold(answer: str, gold: str) -> bool:
+    """Deterministic match: the normalised gold answer appears in the answer as whole words.
+    Answers are sentences ("Pat introduced you to Sam"), so equality would understate accuracy."""
+    a, g = f" {normalize_answer(answer)} ", f" {normalize_answer(gold)} "
+    return g.strip() != "" and g in a
 
 
 class JudgeCache:
@@ -137,7 +149,7 @@ class Judge:
             return Judgement(answer.abstained, "abstain_rule")
         if answer.abstained:
             return Judgement(False, "abstain_rule")
-        if normalize_answer(answer.text) == normalize_answer(q.gold_answer):
+        if contains_gold(answer.text, q.gold_answer):
             return Judgement(True, "exact")
         if q.judge == "exact":
             return Judgement(False, "exact")
