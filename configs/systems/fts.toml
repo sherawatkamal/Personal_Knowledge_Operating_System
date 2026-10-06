@@ -1,0 +1,18 @@
+name = "fts"
+description = "Full text only over raw chunks (keyword baseline: the phase-one gate compares against this). Hosted answer model."
+
+[system]
+kind = "retrieval"
+
+[retrieval]
+corpora = ["chunks"]
+modes = ["fts"]
+fusion = "rrf"
+rrf_k = 60
+pool = 50          # candidates per mode before fusion
+k = 20             # recall@k cut-off and the most items the answer model may see
+
+[answer]
+llm = "groq-120b-answer"
+context_tokens = 4500   # packed to fit 8k tokens/minute (M2)
+min_top_similarity = 0.0   # abstention threshold: calibrate on dev only (F1)

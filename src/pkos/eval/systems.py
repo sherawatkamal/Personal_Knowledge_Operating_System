@@ -76,7 +76,33 @@ class OracleSystem:
         )
 
 
-def build(config: SystemConfig) -> System:
+class RetrievalSystem:
+    """Runs the same pipeline as `pkos ask`, with the config's retrieval and answer settings."""
+
+    def __init__(self, config: SystemConfig, embedder, llm_factory):
+        self.config, self.embedder, self.llm_factory = config, embedder, llm_factory
+
+    def answer(self, question: Question, ctx: Context) -> Answer:
+        from pkos.answer.pipeline import ask
+
+        res = ask(
+            ctx.conn,
+            self.config.raw,
+            question.question,
+            embedder=self.embedder,
+            llm_factory=self.llm_factory,
+        )
+        retrieved = [
+            Retrieved(h.episode_id, "chunk", h.chunk_id, h.span, dict(h.scores))
+            for h in res.retrieved
+        ]
+        index = {h.chunk_id: i for i, h in enumerate(res.retrieved)}
+        c = res.completion
+        usage = Usage(1, c.input_tokens, c.output_tokens, c.cost_usd) if c else Usage()
+        return Answer(res.text, retrieved, [index[h.chunk_id] for h in res.cited_hits], usage)
+
+
+def build(config: SystemConfig, *, embedder=None, llm_factory=None) -> System:
     match config.kind:
         case "null":
             return NullSystem()
@@ -85,7 +111,12 @@ def build(config: SystemConfig) -> System:
                 raise ConfigError(f"{config.name}: an oracle config must set diagnostic = true")
             return OracleSystem()
         case "retrieval":
-            raise ConfigError(f"{config.name}: retrieval systems arrive in step 4")
+            if llm_factory is None:
+                raise ConfigError(f"{config.name}: retrieval systems need an LLM factory")
+            modes = config.raw.get("retrieval", {}).get("modes", [])
+            if "vector" in modes and embedder is None:
+                raise ConfigError(f"{config.name}: vector mode needs an embedder")
+            return RetrievalSystem(config, embedder, llm_factory)
     raise ConfigError(f"{config.name}: unknown kind {config.kind!r}")
 
 

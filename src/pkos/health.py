@@ -13,6 +13,7 @@ class Check:
     name: str
     ok: bool
     detail: str
+    warn: bool = False  # optional component unavailable: reported, does not fail health
 
 
 def run_checks(settings: Settings) -> list[Check]:
@@ -60,3 +61,12 @@ def run_checks(settings: Settings) -> list[Check]:
             detail = "; ".join(problems) or f"{len(st.applied)} applied, up to date"
             checks.append(Check("migrations", st.ok, detail))
     return checks
+
+
+def provider_checks(settings: Settings) -> list[Check]:
+    from pkos.llm.health import check_providers
+
+    return [
+        Check(name, level != "fail", detail, warn=level == "warn")
+        for name, level, detail in check_providers(settings)
+    ]

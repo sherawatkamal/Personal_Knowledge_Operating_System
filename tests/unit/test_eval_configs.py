@@ -32,10 +32,13 @@ def test_oracle_must_be_diagnostic(tmp_path):
         systems.build(c)
 
 
-def test_retrieval_not_available_yet(tmp_path):
-    c = load_config(cfg(tmp_path, "r", 'name = "r"\n[system]\nkind = "retrieval"\n'))
-    with pytest.raises(ConfigError, match="step 4"):
+def test_retrieval_needs_its_dependencies(tmp_path):
+    body = 'name = "r"\n[system]\nkind = "retrieval"\n[retrieval]\nmodes = ["vector"]\n'
+    c = load_config(cfg(tmp_path, "r", body))
+    with pytest.raises(ConfigError, match="LLM factory"):
         systems.build(c)
+    with pytest.raises(ConfigError, match="embedder"):
+        systems.build(c, llm_factory=lambda name: None)
 
 
 def test_config_hash_tracks_file_content(tmp_path):

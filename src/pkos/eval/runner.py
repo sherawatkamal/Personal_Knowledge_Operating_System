@@ -208,6 +208,9 @@ def run_eval(
     split: str,
     judge: Judge,
     data_dir: Path,
+    *,
+    embedder=None,
+    llm_factory=None,
 ) -> EvalRun:
     started = datetime.now(UTC).isoformat(timespec="seconds")
     questions = [q for q in qset.questions if q.split == split]
@@ -224,7 +227,7 @@ def run_eval(
         started_at=started,
     )
     for config in configs:
-        system = systems.build(config)
+        system = systems.build(config, embedder=embedder, llm_factory=llm_factory)
         cr = ConfigRun(config)
         if split == "test" and (w := _record_test_look(qset, data_dir, cr, started)):
             run.warnings.append(w)

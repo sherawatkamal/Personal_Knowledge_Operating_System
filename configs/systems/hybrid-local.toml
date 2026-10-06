@@ -1,0 +1,18 @@
+name = "hybrid-local"
+description = "Full text + vector over raw chunks, fused by reciprocal rank. Local answer model (gpt-oss:20b in Ollama)."
+
+[system]
+kind = "retrieval"
+
+[retrieval]
+corpora = ["chunks"]
+modes = ["fts", "vector"]
+fusion = "rrf"
+rrf_k = 60
+pool = 50          # candidates per mode before fusion
+k = 20             # recall@k cut-off and the most items the answer model may see
+
+[answer]
+llm = "ollama-20b-answer"
+context_tokens = 4500   # same context as hybrid, so only the model differs
+min_top_similarity = 0.0   # abstention threshold: calibrate on dev only (F1)
