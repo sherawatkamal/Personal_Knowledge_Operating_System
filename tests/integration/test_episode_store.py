@@ -156,3 +156,43 @@ def test_db_rejects_bad_rows(conn):
             "INSERT INTO episodes (source, external_id, occurred_at, raw, content_hash) "
             "VALUES ('granola', 'x', now(), '{}', 'not-a-hash')"
         )
+
+
+def test_content_change_clears_old_chunks_in_same_transaction(conn):
+    store.upsert(conn, ep())
+    eid, h = conn.execute("SELECT id, content_hash FROM episodes").fetchone()
+    conn.execute(
+        "INSERT INTO episode_chunks (episode_id, content_hash, kind, chunk_index, char_start,"
+        " char_end, text) VALUES (%s, %s, 'body', 0, 0, 5, 'We ag')",
+        (eid, h),
+    )
+    store.upsert(conn, ep())  # unchanged: chunks survive
+    assert conn.execute("SELECT count(*) FROM episode_chunks").fetchone()[0] == 1
+    store.upsert(conn, ep(text="Completely different text."))
+    assert conn.execute("SELECT count(*) FROM episode_chunks").fetchone()[0] == 0
+
+
+def test_hard_delete_cascades_to_chunks(conn):
+    store.upsert(conn, ep())
+    eid, h = conn.execute("SELECT id, content_hash FROM episodes").fetchone()
+    conn.execute(
+        "INSERT INTO episode_chunks (episode_id, content_hash, kind, chunk_index, text)"
+        " VALUES (%s, %s, 'meta', 0, 'Sync')",
+        (eid, h),
+    )
+    conn.execute("DELETE FROM episodes")
+    assert conn.execute("SELECT count(*) FROM episode_chunks").fetchone()[0] == 0
+
+
+def test_live_chunks_hides_tombstoned_and_stale(conn):
+    store.upsert(conn, ep("a"))
+    store.upsert(conn, ep("b"))
+    for eid, h in conn.execute("SELECT id, content_hash FROM episodes").fetchall():
+        conn.execute(
+            "INSERT INTO episode_chunks (episode_id, content_hash, kind, chunk_index, text)"
+            " VALUES (%s, %s, 'meta', 0, 'x'), (%s, %s, 'meta', 1, 'stale')",
+            (eid, h, eid, "0" * 64),
+        )
+    store.tombstone(conn, "granola", "b")
+    rows = conn.execute("SELECT text FROM live_chunks").fetchall()
+    assert rows == [("x",)], "only live episodes, only current-hash chunks"

@@ -76,8 +76,11 @@ def upsert(conn: psycopg.Connection, episode: Episode) -> Outcome:
     if old_hash is None:
         return Outcome.INSERTED
     if old_hash != h:
-        # Phase-one derived tables (chunks in step 4, facts/commitments in step 8) are keyed
-        # by content_hash; their old-hash rows are cleared here when those tables exist.
+        # Derived rows describe text that no longer exists: clear them in this transaction.
+        # (facts and commitments join this list in step 8.)
+        conn.execute(
+            "DELETE FROM episode_chunks WHERE episode_id = %s AND content_hash <> %s", (row[0], h)
+        )
         return Outcome.UPDATED
     return Outcome.RESTORED
 
