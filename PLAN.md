@@ -438,6 +438,16 @@ Status: built; **STOP open for your review**. 122 tests pass. Shipped configs: `
 - [ ] **STOP** → commit
 
 ### Step 4: Baseline over raw episodes
+
+**8k-tokens-per-minute rules (M2).** These apply to every step that calls Groq:
+- **Pre-flight check.** Each request's tokens are estimated conservatively (characters ÷ 3, plus `max_output_tokens`) and must fit under the profile's `tpm_limit`. A request that can't fit is a bug and raises an error; it is never sent.
+- **Token bucket.** A per-model bucket paces requests, synced from Groq's `x-ratelimit-remaining-tokens` and `x-ratelimit-reset-tokens` headers. Short 429s wait and retry. A 429 whose wait is over 2 minutes (a daily limit) stops the run cleanly with status `budget_stopped`, and the next run resumes. Extraction progress is cached, so resuming costs nothing.
+- **Answer context is packed to a token budget,** not a fixed `k`. Retrieved items go in rank order until about 4,500 tokens; the rest are recorded as retrieved but not shown. The answer and judge prompts are sized to finish inside one minute's budget.
+- **The judge sees the gold answer plus a short excerpt of each gold episode:** the most question-relevant chunks, about 2,000 tokens in total. A whole transcript can't fit, so this replaces "gold sources attached".
+- **Step 8 extraction works in windows:** long bodies are split on line boundaries into windows of about 4,500 tokens with a small overlap. Spans are located within the window, then offset into `body`. Facts duplicated across the overlap are merged. Each window is its own cache entry.
+- **Throughput is about one answer per minute per model.** A 15-question × 4-config smoke eval takes roughly an hour. The judge runs on Qwen's separate per-model budget.
+- **Cost is reported at Groq list prices,** since the free tier bills $0 but the proposal's "cost per 1,000 items" needs a real number. Tables label it "list-price $".
+
 - [ ] `llm/`: `complete(messages, schema=None) -> Result(text|json, usage)`, with hosted and Ollama implementations and profiles from `configs/llm.toml`. Business logic never imports a provider SDK, and a test enforces that
 - [ ] Provider checks added to `pkos health`
 - [ ] `embed/`: Embedder protocol, fastembed `bge-small-en-v1.5` impl, offset-preserving chunker, one `meta` chunk per episode
@@ -445,7 +455,7 @@ Status: built; **STOP open for your review**. 122 tests pass. Shipped configs: `
 - [ ] Retrievers over `live_chunks`: full text, vector, RRF
 - [ ] Answer stage: output is a list of **claims**, each with its citations (needed for the deletion rule in 4b). It cites retrieved **items** (`[1]`, `[2]`… mapped to chunk ids, later fact ids), each resolving to an episode **and a character span**, so a citation can open at the supporting text (needed by the step 4b answer view); citations validated against the retrieved set; abstain below threshold. The full retrieved set (rank, per-mode scores, cited or not) is returned with every answer
 - [ ] `./pkos find "<text>"`, a model-free id lookup for writing gold sources
-- [ ] `./pkos ask "..." [--config hybrid]` and the web page (ask box; episode page with span highlighted)
+- [ ] `./pkos ask "..." [--config hybrid]` (the web page moved to step 4b)
 - [ ] Smoke set: 10–15 Granola questions in `data/smoke.csv`, drafted under the same rules as the main set (§ Question set). These never enter the frozen set: they will have been looked at during development
 - [ ] Score `fts`, `vector`, `hybrid`, `hybrid-local` on the smoke set. Recorded in README **as a smoke test, not a result**
 - [ ] **STOP** → commit
@@ -861,6 +871,8 @@ One thing that holds by construction: drafting in step 7b happens before any ext
 | G1 | Granola: the 10 notes (2026-09-21 to 2026-10-02) are the whole archive |
 | G2 | Granola extraction reads `transcript` and `my_notes`; `granola_summary` is passed to the prompt as context for naming speakers only, never as a fact source |
 | G3 | Granola body layout approved: `my_notes`, `transcript` (merged `Name: text` turns), `granola_summary` (generated) |
+| M1 | Models: Groq **free tier**, `openai/gpt-oss-120b` answers and extracts; judge `qwen/qwen3.8-27b` (the only other family on the key); local `gpt-oss:20b` in Ollama. Strict JSON-schema output verified on both gpt-oss models 2026-10-06 |
+| M2 | **Build within 8,000 tokens/minute** (free-tier limit, per model). Every request must fit, see the 8k rules under step 4 |
 | UI | Step 4b approved: server-rendered with bundled htmx; localhost-only with Host allowlist and CSRF; read-only settings; background sync thread with live progress and visible failures; synchronous delete; seeded-script demo dataset; chunk-level citations; follow-ups as editable standalone questions (rewriter in phase two, with its own eval); history keeps asks, strips deleted sources |
 | F1 | Tuning on `dev` only; `test` ledger warns and marks re-looks after a change; dev results never published |
 | F2 | Full extraction starts only after "extraction prompt frozen"; any later invalidating change is costed before it is made |
