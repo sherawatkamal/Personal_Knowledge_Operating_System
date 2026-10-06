@@ -439,6 +439,9 @@ Status: built; **STOP open for your review**. 122 tests pass. Shipped configs: `
 
 ### Step 4: Baseline over raw episodes
 
+Status: pipeline built and verified live (165 tests). **STOP open: the smoke set needs questions (S4-1) and `hybrid-local` needs Ollama (S4-2).** Verified on your 13 real notes, metadata only: every configuration answered the answerable probe with valid citations and abstained on the absent one; every request stayed under 8k tokens per minute.
+
+
 **8k-tokens-per-minute rules (M2).** These apply to every step that calls Groq:
 - **Pre-flight check.** Each request's tokens are estimated conservatively (characters ÷ 3, plus `max_output_tokens`) and must fit under the profile's `tpm_limit`. A request that can't fit is a bug and raises an error; it is never sent.
 - **Token bucket.** A per-model bucket paces requests, synced from Groq's `x-ratelimit-remaining-tokens` and `x-ratelimit-reset-tokens` headers. Short 429s wait and retry. A 429 whose wait is over 2 minutes (a daily limit) stops the run cleanly with status `budget_stopped`, and the next run resumes. Extraction progress is cached, so resuming costs nothing.
@@ -448,14 +451,14 @@ Status: built; **STOP open for your review**. 122 tests pass. Shipped configs: `
 - **Throughput is about one answer per minute per model.** A 15-question × 4-config smoke eval takes roughly an hour. The judge runs on Qwen's separate per-model budget.
 - **Cost is reported at Groq list prices,** since the free tier bills $0 but the proposal's "cost per 1,000 items" needs a real number. Tables label it "list-price $".
 
-- [ ] `llm/`: `complete(messages, schema=None) -> Result(text|json, usage)`, with hosted and Ollama implementations and profiles from `configs/llm.toml`. Business logic never imports a provider SDK, and a test enforces that
-- [ ] Provider checks added to `pkos health`
-- [ ] `embed/`: Embedder protocol, fastembed `bge-small-en-v1.5` impl, offset-preserving chunker, one `meta` chunk per episode
-- [ ] `./pkos embed`: only episodes whose current hash has no chunks (zero work on re-run)
-- [ ] Retrievers over `live_chunks`: full text, vector, RRF
-- [ ] Answer stage: output is a list of **claims**, each with its citations (needed for the deletion rule in 4b). It cites retrieved **items** (`[1]`, `[2]`… mapped to chunk ids, later fact ids), each resolving to an episode **and a character span**, so a citation can open at the supporting text (needed by the step 4b answer view); citations validated against the retrieved set; abstain below threshold. The full retrieved set (rank, per-mode scores, cited or not) is returned with every answer
-- [ ] `./pkos find "<text>"`, a model-free id lookup for writing gold sources
-- [ ] `./pkos ask "..." [--config hybrid]` (the web page moved to step 4b)
+- [x] `llm/`: `complete(messages, schema=None) -> Result(text|json, usage)`, with hosted and Ollama implementations and profiles from `configs/llm.toml`. Business logic never imports a provider SDK, and a test enforces that
+- [x] Provider checks added to `pkos health`
+- [x] `embed/`: Embedder protocol, fastembed `bge-small-en-v1.5` impl, offset-preserving chunker, one `meta` chunk per episode
+- [x] `./pkos embed`: only episodes whose current hash has no chunks (zero work on re-run)
+- [x] Retrievers over `live_chunks`: full text, vector, RRF
+- [x] Answer stage: output is a list of **claims**, each with its citations (needed for the deletion rule in 4b). It cites retrieved **items** (`[1]`, `[2]`… mapped to chunk ids, later fact ids), each resolving to an episode **and a character span**, so a citation can open at the supporting text (needed by the step 4b answer view); citations validated against the retrieved set; abstain below threshold. The full retrieved set (rank, per-mode scores, cited or not) is returned with every answer
+- [x] `./pkos find "<text>"`, a model-free id lookup for writing gold sources
+- [x] `./pkos ask "..." [--config hybrid]` (the web page moved to step 4b)
 - [ ] Smoke set: 10–15 Granola questions in `data/smoke.csv`, drafted under the same rules as the main set (§ Question set). These never enter the frozen set: they will have been looked at during development
 - [ ] Score `fts`, `vector`, `hybrid`, `hybrid-local` on the smoke set. Recorded in README **as a smoke test, not a result**
 - [ ] **STOP** → commit

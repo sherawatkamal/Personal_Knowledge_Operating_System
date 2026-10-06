@@ -18,6 +18,9 @@ Personal knowledge operating system (pkos): a self-hosted system that ingests a 
 | Any pkos command | `./pkos <command>` (runs in the app container; migrations run first) |
 | Health check | `./pkos health` |
 | Sync sources | `./pkos sync [granola]` (never deletes; reports purge-eligible tombstones) |
+| Ask | `./pkos ask "question" [-c hybrid]`: cited claims; the same pipeline the harness scores |
+| Find | `./pkos find "words"`: model-free episode lookup (for gold sources) |
+| Index | `./pkos embed` (also runs at the end of `./pkos sync`) |
 | Eval | `./pkos eval -c null -c oracle [--split dev\|test] [--questions PATH] [--markdown]`; `--all`; `--freeze` |
 | Apply migrations | `./pkos migrate` (also runs automatically) |
 | Tests | `./pkos test` (pytest in the container; extra args go to pytest) |
@@ -30,6 +33,8 @@ Tests create a fresh database per test (`pkos_test_<random>`) on the same server
 - `src/pkos/episodes/`: Episode model, `normalize.py` (canonical hash, `build_body`), `store.py` (idempotent upsert, tombstone, watermarks).
 - `src/pkos/connectors/`: `base.py` (Connector, Change), `granola.py`. `src/pkos/sync.py`: the sync engine.
 - `src/pkos/eval/`: `questions.py` (CSV + validation), `configs.py` (`configs/systems/*.toml`), `systems.py` (System interface, null, oracle), `scoring.py` (gold resolution and skip reasons, judge and cache), `runner.py` (freeze, test ledger, results), `report.py` (tables).
+- `src/pkos/llm/`: the only code that talks to model providers (`groq.py`, `ollama.py`, per-model token bucket `ratelimit.py`, `health.py`); profiles in `configs/llm.toml`.
+- `src/pkos/embed/`: `chunker.py`, `fast.py` (bge-small, local), `index.py`. `src/pkos/retrieve/chunks.py`: fts, vector, RRF. `src/pkos/answer/`: `stage.py` (claims + citations, abstention), `pipeline.py` (shared by ask, eval, UI).
 - `src/pkos/cli.py`: entry point. `config.py`: settings from `PKOS_*` env vars. `logs.py`: secret scrubbing. `db.py`: connections. `migrate.py`: migration runner. `health.py`: health checks.
 - `migrations/NNNN_name.sql`: plain SQL, applied in order.
 - `tests/unit` (no DB) and `tests/integration` (real Postgres, auto-marked `integration`).
@@ -43,6 +48,7 @@ Tests create a fresh database per test (`pkos_test_<random>`) on the same server
   - `sync_state(source, watermark jsonb, last_success_at)`
   - `episodes`: identity `UNIQUE (source, external_id)`; `content_hash` indexed, not unique; `body` holds source text only, and `sections` gives its exact offsets; `raw` is never hashed; `deleted_at` is the tombstone
   - view `live_episodes`
+- `0003_chunks`: `episode_chunks` (`kind` body|meta; body chunks are exact `body` slices that never cross a section; `vector(384)`; generated `tsv`), view `live_chunks` (live episodes, current hash only)
 
 The full phase-one schema is in PLAN.md §2. Tables are added only by the step that needs them.
 
@@ -79,6 +85,11 @@ The full phase-one schema is in PLAN.md §2. Tables are added only by the step t
 - Tune on `dev` only. `test` runs are recorded in the ledger, and a changed config gets a †.
 - Diagnostic configs (oracle) never reach published (markdown) tables.
 - The synthetic question set and corpus live in `tests/fixtures/` and are generated in code. Your real `questions.csv`, results, ledger and freeze files live in `data/eval/`.
+
+**8k tokens per minute (M2, Groq free tier)**
+- Every Groq request is size-checked before sending (`RequestTooLarge` is a caller bug) and paced by the per-model bucket.
+- Prompts that carry retrieved text are packed to a token budget, never a fixed count.
+- A long 429 raises `DailyLimitReached`: stop cleanly, and resume later from cache.
 
 **Model calls** go through the `llm/` abstraction only, never a provider SDK from business logic. Every extraction is cached by a hash of its exact input, so re-running on unchanged data must make zero model calls.
 
