@@ -24,6 +24,7 @@ class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    queued_ms: float = 0.0  # rate-limit waiting, excluded from latency
 
 
 @dataclass
@@ -98,7 +99,7 @@ class RetrievalSystem:
         ]
         index = {h.chunk_id: i for i, h in enumerate(res.retrieved)}
         c = res.completion
-        usage = Usage(1, c.input_tokens, c.output_tokens, c.cost_usd) if c else Usage()
+        usage = Usage(1, c.input_tokens, c.output_tokens, c.cost_usd, c.queued_ms) if c else Usage()
         return Answer(res.text, retrieved, [index[h.chunk_id] for h in res.cited_hits], usage)
 
 

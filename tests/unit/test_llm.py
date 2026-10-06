@@ -202,3 +202,19 @@ def test_ollama_structured_and_unreachable():
         OllamaLLM(prof, "http://host", transport=httpx.MockTransport(down)).complete(
             MSGS, purpose="answer"
         )
+
+
+def test_rate_limit_wait_is_reported_as_queue_not_latency():
+    now = [0.0]
+    bucket = TokenBucket(8000, clock=lambda: now[0], sleep=lambda s: now.__setitem__(0, now[0] + s))
+    bucket.sync(remaining=0, reset_seconds=60)
+    llm = GroqLLM(
+        PROFILE,
+        KEY,
+        transport=httpx.MockTransport(lambda r: ok_response()),
+        bucket=bucket,
+        sleep=lambda s: None,
+    )
+    c = llm.complete(MSGS, purpose="answer")
+    assert c.queued_ms > 1000, "waited for tokens to refill"
+    assert c.latency_ms < 1000, "latency measures the request, not the wait"

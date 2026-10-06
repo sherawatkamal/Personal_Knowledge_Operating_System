@@ -52,6 +52,7 @@ class Completion:
     latency_ms: float
     profile: str
     model: str
+    queued_ms: float = 0.0  # time spent waiting on the rate limiter, not part of latency
 
 
 class LLM(Protocol):

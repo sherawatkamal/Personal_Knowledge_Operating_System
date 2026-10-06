@@ -10,6 +10,7 @@ x-app: &app
     PKOS_DB_HOST: db
     HF_HUB_DISABLE_PROGRESS_BARS: "1"       # embedding model download: no progress bars
     HF_HUB_DISABLE_TELEMETRY: "1"
+    HF_HUB_VERBOSITY: error
   extra_hosts:
     - "host.docker.internal:host-gateway"   # reach Ollama on the host (also works on Linux)
   volumes:

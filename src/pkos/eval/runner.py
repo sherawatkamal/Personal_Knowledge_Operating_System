@@ -31,6 +31,7 @@ class QResult:
     output_tokens: int
     cost_usd: float
     error: str | None = None
+    queued_ms: float = 0.0
 
 
 @dataclass
@@ -239,7 +240,9 @@ def run_eval(
             t0 = time.perf_counter()
             try:
                 ans = system.answer(q, ctx)
-                latency = (time.perf_counter() - t0) * 1000
+                # Latency is the system's own time: free-tier rate-limit waiting is excluded
+                # (recorded separately), or every number would measure the account tier.
+                latency = (time.perf_counter() - t0) * 1000 - ans.usage.queued_ms
                 j = judge.judge(q, ans, res.gold_episode_ids)
             except Exception as e:  # recorded, excluded from the common set, never silent
                 cr.results[q.id] = QResult(

@@ -74,9 +74,10 @@ class GroqLLM:
                 f"{p.name}: ~{need} tokens estimated, limit {p.tpm_limit}/min; shrink the prompt"
             )
         body = self._payload(messages, schema)
+        queued = 0.0
         for attempt in range(self._max_retries + 1):
             if self._bucket:
-                self._bucket.acquire(need)
+                queued += self._bucket.acquire(need) * 1000
             t0 = time.perf_counter()
             try:
                 resp = self._http.post("/chat/completions", json=body)
@@ -93,7 +94,7 @@ class GroqLLM:
                     parse_duration(resp.headers.get("x-ratelimit-reset-tokens")),
                 )
             if resp.status_code == 200:
-                return self._completion(resp.json(), schema, latency, purpose)
+                return self._completion(resp.json(), schema, latency, purpose, queued)
             if resp.status_code == 429:
                 wait = (
                     parse_duration(resp.headers.get("retry-after"))
@@ -107,6 +108,7 @@ class GroqLLM:
                     )
                 if attempt < self._max_retries:
                     self._sleep(wait)
+                    queued += wait * 1000
                     continue
             elif resp.status_code >= 500 and attempt < self._max_retries:
                 self._sleep(2**attempt)
@@ -115,7 +117,12 @@ class GroqLLM:
         raise LLMError(f"{p.name}: gave up after {self._max_retries} retries")
 
     def _completion(
-        self, doc: dict[str, Any], schema: dict[str, Any] | None, latency: float, purpose: str
+        self,
+        doc: dict[str, Any],
+        schema: dict[str, Any] | None,
+        latency: float,
+        purpose: str,
+        queued: float = 0.0,
     ) -> Completion:
         p = self.profile
         text = doc["choices"][0]["message"].get("content") or ""
@@ -138,6 +145,7 @@ class GroqLLM:
             latency,
             p.name,
             doc.get("model", p.model),
+            queued,
         )
         usage.record(purpose, c)
         return c
