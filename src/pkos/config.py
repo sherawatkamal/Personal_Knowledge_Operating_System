@@ -25,13 +25,15 @@ class Settings(BaseSettings):
     db_password: SecretStr = SecretStr("pkos-local-dev")
 
     granola_api_key: SecretStr | None = None
+    groq_api_key: SecretStr | None = None
+    ollama_url: str = "http://host.docker.internal:11434"  # Ollama runs natively on the host
     purge_after_days: int = 30  # tombstones older than this are eligible for `pkos purge`
 
     migrations_dir: Path = REPO_ROOT / "migrations"
     data_dir: Path = REPO_ROOT / "data"  # gitignored: questions, eval results, tokens
     log_level: str = "INFO"
 
-    @field_validator("granola_api_key", mode="before")
+    @field_validator("granola_api_key", "groq_api_key", mode="before")
     @classmethod
     def _blank_is_unset(cls, v: object) -> object:
         """`KEY=` in .env means the source is disabled, not an empty credential."""

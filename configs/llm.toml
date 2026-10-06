@@ -1,0 +1,30 @@
+# Model profiles. Business logic asks for a profile by name; only src/pkos/llm/ talks to providers.
+# Prices are LIST prices per million tokens (Groq free tier bills $0; the proposal's cost-per-1,000
+# -items metric needs real numbers). Checked 2026-10-06; the Qwen price is from third-party aggregators.
+# tpm_limit: the account's tokens-per-minute limit for that model (Groq free tier: 8,000).
+
+[profiles.groq-120b-answer]
+provider = "groq"
+model = "openai/gpt-oss-120b"
+reasoning_effort = "medium"
+max_output_tokens = 1500
+tpm_limit = 8000
+price_in_per_m = 0.15
+price_out_per_m = 0.60
+
+[profiles.groq-qwen-judge]
+provider = "groq"
+model = "qwen/qwen3.8-27b"
+reasoning_effort = "none"
+max_output_tokens = 300
+tpm_limit = 8000
+price_in_per_m = 0.80
+price_out_per_m = 4.00
+
+[profiles.ollama-20b-answer]
+provider = "ollama"
+model = "gpt-oss:20b"
+reasoning_effort = "medium"
+max_output_tokens = 1500
+price_in_per_m = 0.0
+price_out_per_m = 0.0

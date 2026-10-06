@@ -8,6 +8,8 @@ x-app: &app
       required: false
   environment:
     PKOS_DB_HOST: db
+  extra_hosts:
+    - "host.docker.internal:host-gateway"   # reach Ollama on the host (also works on Linux)
   volumes:
     - ./:/app   # dev bind mount: code edits apply without a rebuild
 

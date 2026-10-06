@@ -76,6 +76,7 @@ def test_uncaught_exception_hook_scrubbed(planted_env, capsys):
         "refresh 1//0gabcdefghijklmnopqrstuvwxyz",
         "client GOCSPX-abcdefghijklmnop",
         "granola grn_abcdefghijklmnop0123",
+        "groq gsk_abcdefghijklmnop0123",
         "password=hunter2hunter2",
         '{"api_key": "abc123def456"}',
         "refresh_token: zzzzzzzzzzzz",

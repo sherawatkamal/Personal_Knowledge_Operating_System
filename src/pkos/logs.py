@@ -27,6 +27,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b1//[A-Za-z0-9._-]{20,}"), REDACTED),  # Google refresh tokens
     (re.compile(r"\bGOCSPX-[A-Za-z0-9_-]{10,}"), REDACTED),  # Google OAuth client secrets
     (re.compile(r"\bgrn_[A-Za-z0-9_-]{16,}"), REDACTED),  # Granola API keys
+    (re.compile(r"\bgsk_[A-Za-z0-9]{16,}"), REDACTED),  # Groq API keys
     (
         re.compile(
             r"(?i)(\"?\b(?:password|passwd|pwd|secret|client_secret|token|access_token|"
