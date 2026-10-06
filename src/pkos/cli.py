@@ -58,8 +58,36 @@ def _connectors(settings, only: str | None):
     return available
 
 
+def _embedder(settings):
+    from pkos.embed.fast import FastEmbedder
+
+    return FastEmbedder(settings.data_dir / "models")
+
+
+def _index(conn, settings) -> None:
+    from pkos.embed.index import index_pending
+
+    r = index_pending(conn, _embedder(settings))
+    _echo(
+        f"indexed {r.episodes} episode(s), {r.chunks} chunk(s)"
+        if r.episodes
+        else "index up to date"
+    )
+
+
+@app.command("embed")
+def embed_cmd() -> None:
+    """Chunk and embed episodes whose current content isn't indexed yet (local model)."""
+    settings = get_settings()
+    with db.connect(settings, autocommit=True) as conn:
+        _index(conn, settings)
+
+
 @app.command("sync")
-def sync_cmd(source: str = typer.Argument(None, help="Sync only this source.")) -> None:
+def sync_cmd(
+    source: str = typer.Argument(None, help="Sync only this source."),
+    embed: bool = typer.Option(True, help="Index new and changed episodes after syncing."),
+) -> None:
     """Pull new and changed items from every configured source. Never deletes data."""
     settings = get_settings()
     connectors = _connectors(settings, source)
@@ -86,6 +114,8 @@ def sync_cmd(source: str = typer.Argument(None, help="Sync only this source.")) 
                     f"{name}: {r.purge_eligible} deleted item(s) older than "
                     f"{settings.purge_after_days} days are eligible for `pkos purge`"
                 )
+        if embed:
+            _index(conn, settings)
     if failed:
         raise typer.Exit(1)
 

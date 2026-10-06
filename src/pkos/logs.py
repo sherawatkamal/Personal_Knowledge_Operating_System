@@ -67,6 +67,7 @@ def setup_logging(level: str = "INFO") -> None:
     root.handlers[:] = [handler]
     root.setLevel(level.upper())
     logging.getLogger("httpx").setLevel(logging.WARNING)  # per-request lines are noise
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)  # model-download chatter
     sys.excepthook = _scrubbed_excepthook
 
 
